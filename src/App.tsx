@@ -7,6 +7,8 @@ import VerifyEmailPage from './pages/VerifyEmailPage'
 import AccountPage from './pages/AccountPage'
 import RequestPasswordResetPage from './pages/RequestPasswordResetPage'
 import SetNewPasswordPage from './pages/SetNewPasswordPage'
+import CatalogPage from './pages/CatalogPage'
+import ProductDetailPage from './pages/ProductDetailPage'
 
 export default function App() {
   return (
@@ -20,6 +22,8 @@ export default function App() {
             <Route path="verify-email" element={<VerifyEmailPage />} />
             <Route path="password-reset/request" element={<RequestPasswordResetPage />} />
             <Route path="password-reset/set" element={<SetNewPasswordPage />} />
+            <Route path="catalog" element={<CatalogPage />} />
+            <Route path="products/:productId" element={<ProductDetailPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
