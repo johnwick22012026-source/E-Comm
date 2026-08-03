@@ -167,6 +167,13 @@ enum CheckoutSessionStatus {
   ABANDONED
 }
 
+enum PaymentAttemptStatus {
+  PENDING
+  AUTHORIZED
+  FAILED
+  CANCELED
+}
+
 model AttributeDefinition {
   id          Int                  @id @default(autoincrement())
   key         String               @unique
@@ -388,6 +395,7 @@ model Cart {
   inventoryReservations       CartInventoryReservation[]
   shippingEstimates           CartShippingEstimate[]
   couponRedemptions           CouponRedemption[]
+  paymentAttempts             PaymentAttempt[]
 
   @@index([userId])
 }
@@ -540,6 +548,7 @@ model CheckoutSession {
   shippingAddress           CheckoutShippingAddress?
   selectedShippingMethod    CheckoutSelectedShippingMethod?
   draftOrderState           CheckoutDraftOrderState?
+  paymentAttempts           PaymentAttempt[]
   createdAt                 DateTime                         @default(now())
   updatedAt                 DateTime                         @updatedAt
 
@@ -591,4 +600,28 @@ model CheckoutDraftOrderState {
   metadata          Json?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
+}
+
+model PaymentAttempt {
+  id                   Int                    @id @default(autoincrement())
+  cartId               Int?
+  cart                 Cart?                  @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  checkoutSessionId    Int?
+  checkoutSession      CheckoutSession?       @relation(fields: [checkoutSessionId], references: [id], onDelete: SetNull)
+  orderId              Int?
+  selectedPaymentMethod String?
+  providerReference    String?
+  status               PaymentAttemptStatus   @default(PENDING)
+  failureReason        String?
+  providerMetadata     Json?
+  initiatedAt          DateTime               @default(now())
+  completedAt          DateTime?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  @@index([cartId])
+  @@index([checkoutSessionId])
+  @@index([orderId])
+  @@index([providerReference])
+  @@index([status])
 }
