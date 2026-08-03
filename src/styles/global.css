@@ -142,7 +142,8 @@ input:focus {
 
 button,
 .primary,
-.secondary {
+.secondary,
+.link-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -176,6 +177,18 @@ button:disabled,
   text-decoration: none;
 }
 
+.link-button {
+  background: none;
+  color: #6366f1;
+  text-decoration: underline;
+  padding: 0;
+  border-radius: 0;
+}
+
+.link-button:hover {
+  transform: none;
+}
+
 .error-list {
   margin: 1rem 0 0;
   padding-left: 1.25rem;
@@ -191,9 +204,24 @@ button:disabled,
   color: #047857;
 }
 
+.status {
+  margin-top: 1rem;
+  font-weight: 500;
+}
+
+.status--success {
+  color: #047857;
+}
+
+.status--error {
+  color: #b91c1c;
+}
+
 .actions {
   display: flex;
   gap: 0.75rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
 }
 
 .account-details {
@@ -218,6 +246,25 @@ button:disabled,
 .error {
   color: #b91c1c;
   margin-top: 0.75rem;
+}
+
+.policy-list {
+  margin-bottom: 1rem;
+}
+
+.policy-item {
+  font-size: 0.9rem;
+  color: #475569;
+}
+
+.policy-item--met {
+  color: #047857;
+}
+
+.formik-link-bar {
+  margin-top: 0.75rem;
+  display: flex;
+  justify-content: flex-start;
 }
 
 @media (max-width: 768px) {
