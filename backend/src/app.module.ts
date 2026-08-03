@@ -8,6 +8,7 @@ import { CartModule } from './cart/cart.module'
 import { CheckoutModule } from './checkout/checkout.module'
 import { PaymentsModule } from './payments/payments.module'
 import { OrdersModule } from './orders/orders.module'
+import { CustomerProfileModule } from './customer-profile/customer-profile.module'
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { OrdersModule } from './orders/orders.module'
     PrismaModule,
     NotificationModule,
     AuthModule,
+    CustomerProfileModule,
     CatalogModule,
     CartModule,
     CheckoutModule,
