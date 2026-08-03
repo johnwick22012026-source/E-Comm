@@ -13,6 +13,7 @@ interface AuthContextValue {
   isReady: boolean
   loading: boolean
   error: string | null
+  isSupportUser: boolean
   register: (payload: { email: string; password: string }) => Promise<string>
   login: (payload: { email: string; password: string }) => Promise<UserProfile>
   logout: () => Promise<void>
@@ -126,18 +127,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }
 
+  const isSupportUser = useMemo(() => {
+    if (!user?.email) {
+      return false
+    }
+    const normalized = user.email.toLowerCase()
+    return normalized.includes('+support') || normalized.includes('@support.')
+  }, [user?.email])
+
   const value = useMemo(
     () => ({
       user,
       isReady,
       loading,
       error,
+      isSupportUser,
       register,
       login,
       logout,
       refreshUser,
     }),
-    [user, isReady, loading, error],
+    [user, isReady, loading, error, isSupportUser],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
