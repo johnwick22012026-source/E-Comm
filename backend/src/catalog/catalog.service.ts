@@ -1,7 +1,29 @@
-import { Injectable, BadRequestException } from '@nestjs/common'
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common'
 import { Prisma, Product } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
-import { CatalogQueryDto, CatalogSortOption } from './dto/catalog-query.dto'
+
+export enum CatalogSortOption {
+  PRICE_ASC = 'price_asc',
+  PRICE_DESC = 'price_desc',
+  NEWEST = 'newest',
+  NAME_ASC = 'name_asc',
+  POPULARITY = 'popularity',
+}
+
+export class CatalogQueryDto {
+  cursor?: string
+  limit?: string
+  page?: string
+  perPage?: string
+  sort?: CatalogSortOption
+  available?: string
+  brand?: string
+  category?: string
+  subcategory?: string
+  minPrice?: string
+  maxPrice?: string
+  search?: string
+}
 
 type CatalogProductRecord = Product & {
   category: { id: number; name: string; slug: string } | null
@@ -12,6 +34,8 @@ type CatalogProductRecord = Product & {
 export class CatalogService {
   private readonly defaultPageSize = 20
   private readonly maxPageSize = 100
+  private readonly relatedProductsDefaultLimit = 8
+  private readonly relatedProductsMaxLimit = 32
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -26,6 +50,182 @@ export class CatalogService {
     }
 
     return this.fetchWithPage(where, orderBy, query)
+  }
+
+  async getProductDetail(productId: number) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        category: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+        },
+        subcategory: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+        },
+        images: {
+          orderBy: { sortOrder: 'asc' },
+          select: {
+            id: true,
+            url: true,
+            altText: true,
+            focalPoint: true,
+            provider: true,
+            sortOrder: true,
+            isPrimary: true,
+            metadata: true,
+          },
+        },
+        specifications: {
+          include: {
+            definition: {
+              select: {
+                id: true,
+                key: true,
+                label: true,
+                dataType: true,
+              },
+            },
+          },
+          orderBy: [
+            { displayOrder: 'asc' },
+            { id: 'asc' },
+          ],
+        },
+        ratingAggregate: true,
+      },
+    })
+
+    if (!product) {
+      throw new NotFoundException('Product not found')
+    }
+
+    const relatedProducts = await this.getRelatedProducts(productId)
+
+    return {
+      id: product.id,
+      name: product.name,
+      slug: product.slug,
+      description: product.description,
+      brand: product.brand,
+      category: product.category,
+      subcategory: product.subcategory,
+      pricing: {
+        price: Number(product.price),
+        currency: product.currency,
+        listPrice: Number(product.listPrice),
+        salePrice: product.salePrice ? Number(product.salePrice) : null,
+        saleStartsAt: product.saleStartsAt,
+        saleEndsAt: product.saleEndsAt,
+        priceUpdatedAt: product.priceUpdatedAt,
+      },
+      availability: {
+        stockQuantity: product.stockQuantity,
+        availableQuantity: product.availableQuantity,
+        reservedQuantity: product.reservedQuantity,
+        inventoryStatus: product.inventoryStatus,
+        availabilityUpdatedAt: product.availabilityUpdatedAt,
+        isAvailable: product.isAvailable,
+        isActive: product.isActive,
+      },
+      ratings: product.ratingAggregate
+        ? {
+            average: Number(product.ratingAggregate.ratingAverage),
+            count: product.ratingAggregate.ratingCount,
+            distribution: product.ratingAggregate.ratingDistribution ?? {},
+          }
+        : { average: 0, count: 0, distribution: {} },
+      specifications: product.specifications.map((spec) => ({
+        id: spec.id,
+        key: spec.definition.key,
+        label: spec.displayName ?? spec.definition.label,
+        value: spec.value,
+        groupName: spec.groupName,
+        dataType: spec.definition.dataType,
+        displayOrder: spec.displayOrder,
+      })),
+      images: product.images.map((image) => ({
+        id: image.id,
+        url: image.url,
+        altText: image.altText,
+        focalPoint: image.focalPoint,
+        provider: image.provider,
+        sortOrder: image.sortOrder,
+        isPrimary: image.isPrimary,
+        metadata: image.metadata ?? null,
+      })),
+      relatedProducts,
+    }
+  }
+
+  async getRelatedProducts(productId: number, limit?: number) {
+    const computedLimit = this.getSafeRelatedLimit(limit)
+
+    const relationships = await this.prisma.productRelationship.findMany({
+      where: { fromProductId: productId },
+      take: computedLimit,
+      orderBy: [
+        { type: 'asc' },
+        { createdAt: 'desc' },
+      ],
+      include: {
+        toProduct: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            brand: true,
+            price: true,
+            currency: true,
+            isAvailable: true,
+            inventoryStatus: true,
+            images: {
+              orderBy: { sortOrder: 'asc' },
+              take: 1,
+              select: {
+                url: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    return relationships
+      .map((relationship) => {
+        const toProduct = relationship.toProduct
+        if (!toProduct) {
+          return null
+        }
+        const image = toProduct.images?.[0]
+        return {
+          id: toProduct.id,
+          name: toProduct.name,
+          slug: toProduct.slug,
+          brand: toProduct.brand,
+          price: Number(toProduct.price),
+          currency: toProduct.currency,
+          isAvailable: toProduct.isAvailable,
+          inventoryStatus: toProduct.inventoryStatus,
+          type: relationship.type,
+          primaryImageUrl: image?.url ?? null,
+        }
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+  }
+
+  private getSafeRelatedLimit(limit?: number) {
+    if (limit && Number.isFinite(limit) && limit > 0) {
+      return Math.min(limit, this.relatedProductsMaxLimit)
+    }
+    return this.relatedProductsDefaultLimit
   }
 
   private ensurePaginationParameters(query: CatalogQueryDto) {
@@ -110,7 +310,6 @@ export class CatalogService {
         base.push({ popularityScore: 'desc' })
         break
     }
-    // Stable tied results by id
     base.push({ id: 'asc' })
     return base
   }
