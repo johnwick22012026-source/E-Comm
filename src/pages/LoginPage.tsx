@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 const LoginPage = () => {
@@ -70,6 +70,11 @@ const LoginPage = () => {
           {submitting ? 'Signing in…' : 'Login'}
         </button>
       </form>
+      <div className="formik-link-bar">
+        <Link className="link-button" to="/password-reset/request">
+          Forgot your password?
+        </Link>
+      </div>
       {errors.length > 0 && (
         <ul className="error-list" aria-live="assertive">
           {errors.map((error) => (
