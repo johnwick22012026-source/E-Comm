@@ -7,6 +7,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum PaymentMethod {
+  CARD
+  UPI
+  NET_BANKING
+  WALLET
+}
+
 model User {
   id              Int                      @id @default(autoincrement())
   email           String                   @unique
@@ -435,7 +442,7 @@ model SavedCartSnapshot {
   restoreRequestedAt DateTime?
   restoredAt       DateTime?
   createdAt        DateTime                   @default(now())
-  updatedAt        DateTime                   @updatedAt
+  updatedAt        DateTime                   @default(now())
   items            SavedCartItem[]
 
   @@index([userId])
@@ -499,7 +506,7 @@ model CartShippingEstimate {
   output                 Json?
   validUntil             DateTime?
   createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @updatedAt
+  updatedAt              DateTime                @default(now())
 
   @@index([cartId])
   @@index([provider])
@@ -571,7 +578,7 @@ model CheckoutShippingAddress {
   phone             String?
   metadata          Json?
   createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  updatedAt         DateTime         @default(now())
 }
 
 model CheckoutSelectedShippingMethod {
@@ -586,7 +593,7 @@ model CheckoutSelectedShippingMethod {
   estimatedDeliveryDays Int?
   metadata             Json?
   createdAt            DateTime        @default(now())
-  updatedAt            DateTime        @updatedAt
+  updatedAt            DateTime        @default(now())
 }
 
 model CheckoutDraftOrderState {
@@ -599,7 +606,7 @@ model CheckoutDraftOrderState {
   expiresAt         DateTime?
   metadata          Json?
   createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  updatedAt         DateTime        @default(now())
 }
 
 model PaymentAttempt {
@@ -614,9 +621,14 @@ model PaymentAttempt {
   status               PaymentAttemptStatus   @default(PENDING)
   failureReason        String?
   providerMetadata     Json?
+  idempotencyKey       String?                @unique
+  amount               Decimal?
+  currency             String?
+  method               PaymentMethod?
+  metadata             Json?
+  createdAt            DateTime               @default(now())
   initiatedAt          DateTime               @default(now())
   completedAt          DateTime?
-  createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
 
   @@index([cartId])
@@ -624,4 +636,5 @@ model PaymentAttempt {
   @@index([orderId])
   @@index([providerReference])
   @@index([status])
+  @@index([idempotencyKey])
 }
