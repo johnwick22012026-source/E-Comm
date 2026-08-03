@@ -77,6 +77,23 @@ export class CartService {
     return this.buildCartResponse(cartItem.cartId)
   }
 
+  async getCartForUser(userId: number): Promise<CartMutationResult> {
+    const cart = await this.prisma.cart.findUnique({ where: { userId } })
+    if (!cart) {
+      return {
+        items: [],
+        totals: {
+          currency: 'USD',
+          subtotal: 0,
+          tax: 0,
+          total: 0,
+        },
+      }
+    }
+
+    return this.buildCartResponse(cart.id)
+  }
+
   private async fetchCartItemForUser(itemId: number, userId: number) {
     const cartItem = await this.prisma.cartItem.findUnique({
       where: { id: itemId },
@@ -113,7 +130,11 @@ export class CartService {
       orderBy: { updatedAt: 'desc' },
     })
 
-    const items: CartItemView[] = rawItems.map((item) => {
+    const itemsWithProduct = rawItems.filter(
+      (item): item is (typeof item & { product: Product }) => Boolean(item.product),
+    )
+
+    const items: CartItemView[] = itemsWithProduct.map((item) => {
       const product = item.product
       const availableQuantity = Math.max(0, product.availableQuantity ?? 0)
       return {
