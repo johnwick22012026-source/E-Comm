@@ -20,6 +20,7 @@ model User {
   sessions              Session[]
   passwordResetTokens   PasswordResetToken[]
   savedCartSnapshots    SavedCartSnapshot[]
+  couponRedemptions     CouponRedemption[]
 }
 
 model EmailVerificationToken {
@@ -135,6 +136,24 @@ enum SavedCartItemRestoreStatus {
   PENDING
   RESTORED
   FAILED
+}
+
+enum CouponDiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+enum CouponRedemptionStatus {
+  PENDING
+  APPLIED
+  EXPIRED
+  INVALIDATED
+}
+
+enum ShippingEstimateStatus {
+  DRAFT
+  CONFIRMED
+  EXPIRED
 }
 
 model AttributeDefinition {
@@ -302,15 +321,62 @@ model ProductRelationship {
   @@index([toProductId])
 }
 
+model Coupon {
+  id            Int                     @id @default(autoincrement())
+  code          String                  @unique
+  description   String?
+  discountType  CouponDiscountType      @default(PERCENTAGE)
+  discountValue Decimal                 @default(0)
+  currency      String                  @default("USD")
+  usageLimit    Int?
+  usageCount    Int                     @default(0)
+  metadata      Json?
+  startsAt      DateTime?
+  expiresAt     DateTime?
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+
+  redemptions   CouponRedemption[]
+
+  @@index([startsAt])
+  @@index([expiresAt])
+}
+
+model CouponRedemption {
+  id            Int                      @id @default(autoincrement())
+  couponId      Int
+  coupon        Coupon                   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  cartId        Int?
+  cart          Cart?                    @relation(fields: [cartId], references: [id])
+  userId        Int?
+  user          User?                    @relation(fields: [userId], references: [id])
+  status        CouponRedemptionStatus   @default(PENDING)
+  discountAmount Decimal?
+  metadata      Json?
+  appliedAt     DateTime?
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+
+  @@index([couponId])
+  @@index([cartId])
+  @@index([userId])
+  @@index([status])
+}
+
 /// Cart and CartItem models for persistent cart functionality
 model Cart {
-  id        Int        @id @default(autoincrement())
-  userId    Int        @unique
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items     CartItem[]
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  lastInventoryValidationAt DateTime?
+  id                          Int                            @id @default(autoincrement())
+  userId                      Int        @unique
+  user                        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items                       CartItem[]
+  createdAt                   DateTime   @default(now())
+  updatedAt                   DateTime   @updatedAt
+  lastInventoryValidationAt   DateTime?
+  lastReservationSyncAt       DateTime?
+  pricingRecords              CartPricingRecord[]
+  inventoryReservations       CartInventoryReservation[]
+  shippingEstimates           CartShippingEstimate[]
+  couponRedemptions           CouponRedemption[]
 
   @@index([userId])
 }
@@ -320,6 +386,8 @@ model CartItem {
   cartId                    Int
   productId                 Int
   quantity                  Int             @default(1)
+  reservedQuantity          Int             @default(0)
+  reservationMetadata       Json?
   status                    CartItemStatus  @default(ACTIVE)
   removedAt                 DateTime?
   createdAt                 DateTime        @default(now())
@@ -328,6 +396,7 @@ model CartItem {
   lastKnownAvailableQuantity Int?
   cart                      Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
   product                   Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  inventoryReservations     CartInventoryReservation[]
 
   @@unique([cartId, productId])
   @@index([cartId])
@@ -374,4 +443,70 @@ model SavedCartItem {
   @@index([snapshotId])
   @@index([productId])
   @@index([snapshotId, restoreStatus])
+}
+
+model CartInventoryReservation {
+  id                Int      @id @default(autoincrement())
+  cartId            Int
+  cart              Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  cartItemId        Int?
+  cartItem          CartItem? @relation(fields: [cartItemId], references: [id], onDelete: Cascade)
+  productId         Int
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  reservedQuantity  Int      @default(0)
+  reservationSource String?
+  metadata          Json?
+  expiresAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([cartId])
+  @@index([cartItemId])
+  @@index([productId])
+  @@index([expiresAt])
+}
+
+model CartShippingEstimate {
+  id                     Int                      @id @default(autoincrement())
+  cartId                 Int
+  cart                   Cart                     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  provider               String
+  serviceLevel           String?
+  status                 ShippingEstimateStatus  @default(DRAFT)
+  currency               String                  @default("USD")
+  cost                   Decimal                 @default(0)
+  estimatedDeliveryDays  Int?
+  input                  Json
+  output                 Json?
+  validUntil             DateTime?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  @@index([cartId])
+  @@index([provider])
+  @@index([status])
+  @@index([validUntil])
+}
+
+model CartPricingRecord {
+  id                     Int                      @id @default(autoincrement())
+  cartId                 Int
+  cart                   Cart                     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  currency               String                  @default("USD")
+  subtotal               Decimal                 @default(0)
+  tax                    Decimal                 @default(0)
+  shippingCost           Decimal                 @default(0)
+  discountTotal          Decimal                 @default(0)
+  total                  Decimal                 @default(0)
+  couponRedemptionId     Int?
+  couponRedemption       CouponRedemption?       @relation(fields: [couponRedemptionId], references: [id])
+  shippingInput          Json?
+  shippingOutput         Json?
+  inventorySnapshot      Json?
+  metadata               Json?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  @@index([cartId])
+  @@index([createdAt])
 }
