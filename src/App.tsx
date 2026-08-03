@@ -10,6 +10,7 @@ import SetNewPasswordPage from './pages/SetNewPasswordPage'
 import CatalogPage from './pages/CatalogPage'
 import ProductDetailPage from './pages/ProductDetailPage'
 import CartPage from './pages/CartPage'
+import CheckoutPage from './pages/CheckoutPage'
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="catalog" element={<CatalogPage />} />
             <Route path="products/:productId" element={<ProductDetailPage />} />
             <Route path="cart" element={<CartPage />} />
+            <Route path="checkout" element={<CheckoutPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
