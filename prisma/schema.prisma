@@ -19,6 +19,7 @@ model User {
   verificationTokens    EmailVerificationToken[]
   sessions              Session[]
   passwordResetTokens   PasswordResetToken[]
+  savedCartSnapshots    SavedCartSnapshot[]
 }
 
 model EmailVerificationToken {
@@ -123,6 +124,19 @@ enum CartItemStatus {
   REMOVED
 }
 
+enum SavedCartRestoreStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum SavedCartItemRestoreStatus {
+  PENDING
+  RESTORED
+  FAILED
+}
+
 model AttributeDefinition {
   id          Int                  @id @default(autoincrement())
   key         String               @unique
@@ -172,6 +186,8 @@ model Product {
   ratingAggregate     ProductRatingAggregate?
   relatedProductsFrom ProductRelationship[]     @relation("ProductRelationshipsFrom")
   relatedProductsTo   ProductRelationship[]     @relation("ProductRelationshipsTo")
+  savedCartItems      SavedCartItem[]
+  cartItems           CartItem[]
 
   @@index([categoryId, isActive, price])
   @@index([categoryId, isActive, createdAt])
@@ -319,4 +335,43 @@ model CartItem {
   @@index([cartId, status])
   @@index([productId, status])
   @@index([cartId, lastValidatedAt])
+}
+
+model SavedCartSnapshot {
+  id               Int                        @id @default(autoincrement())
+  userId           Int
+  user             User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name             String?
+  metadata         Json?
+  restoreStatus    SavedCartRestoreStatus     @default(PENDING)
+  restoreRequestedAt DateTime?
+  restoredAt       DateTime?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+  items            SavedCartItem[]
+
+  @@index([userId])
+  @@index([userId, createdAt])
+  @@index([userId, restoreStatus, createdAt])
+}
+
+model SavedCartItem {
+  id              Int                         @id @default(autoincrement())
+  snapshotId      Int
+  snapshot        SavedCartSnapshot           @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  productId       Int
+  product         Product                     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  productSku      String?
+  quantity        Int                         @default(1)
+  unitPrice       Decimal?
+  restoreStatus   SavedCartItemRestoreStatus  @default(PENDING)
+  restoredQuantity Int?
+  restoreMessage  String?
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+
+  @@unique([snapshotId, productId])
+  @@index([snapshotId])
+  @@index([productId])
+  @@index([snapshotId, restoreStatus])
 }
