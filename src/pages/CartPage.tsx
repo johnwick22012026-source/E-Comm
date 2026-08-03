@@ -40,6 +40,7 @@ const CartPage = () => {
   const [quantityInputs, setQuantityInputs] = useState<Record<number, number>>({})
   const [itemErrors, setItemErrors] = useState<Record<number, string>>({})
   const [updating, setUpdating] = useState<Record<number, boolean>>({})
+  const [removing, setRemoving] = useState<Record<number, boolean>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -80,11 +81,11 @@ const CartPage = () => {
   }, [loadCart])
 
   const handleQuantityChange = (itemId: number, nextValue: number) => {
-    setQuantityInputs((prev) => ({
+    setQuantityInputs(prev => ({
       ...prev,
       [itemId]: Math.max(0, nextValue),
     }))
-    setItemErrors((prev) => ({ ...prev, [itemId]: '' }))
+    setItemErrors(prev => ({ ...prev, [itemId]: '' }))
   }
 
   const handleUpdateQuantity = async (item: CartItem) => {
@@ -92,7 +93,7 @@ const CartPage = () => {
     const availableQuantity = Math.max(0, item.product.availability.availableQuantity ?? 0)
 
     if (!item.product.availability.isAvailable || availableQuantity <= 0) {
-      setItemErrors((prev) => ({
+      setItemErrors(prev => ({
         ...prev,
         [item.id]: 'This item is no longer available in the requested quantity.',
       }))
@@ -100,14 +101,14 @@ const CartPage = () => {
     }
 
     if (desiredQuantity < 1 || desiredQuantity > availableQuantity) {
-      setItemErrors((prev) => ({
+      setItemErrors(prev => ({
         ...prev,
         [item.id]: `Select a quantity between 1 and ${availableQuantity}.`,
       }))
       return
     }
 
-    setUpdating((prev) => ({ ...prev, [item.id]: true }))
+    setUpdating(prev => ({ ...prev, [item.id]: true }))
     try {
       const response = await fetch(`${API_BASE}/cart/items/${item.id}`, {
         method: 'PATCH',
@@ -118,17 +119,42 @@ const CartPage = () => {
       if (!response.ok) {
         const data = await response.json().catch(() => null)
         const message = data?.message ?? 'Unable to update this item.\nPlease try again.'
-        setItemErrors((prev) => ({ ...prev, [item.id]: message }))
+        setItemErrors(prev => ({ ...prev, [item.id]: message }))
         return
       }
       await loadCart()
     } catch (err) {
-      setItemErrors((prev) => ({
+      setItemErrors(prev => ({
         ...prev,
         [item.id]: err instanceof Error ? err.message : 'Unable to update this item.',
       }))
     } finally {
-      setUpdating((prev) => ({ ...prev, [item.id]: false }))
+      setUpdating(prev => ({ ...prev, [item.id]: false }))
+    }
+  }
+
+  const handleRemoveItem = async (itemId: number) => {
+    setItemErrors(prev => ({ ...prev, [itemId]: '' }))
+    setRemoving(prev => ({ ...prev, [itemId]: true }))
+    try {
+      const response = await fetch(`${API_BASE}/cart/items/${itemId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!response.ok) {
+        const data = await response.json().catch(() => null)
+        const message = data?.message ?? 'Unable to remove this item. Please try again.'
+        setItemErrors(prev => ({ ...prev, [itemId]: message }))
+        return
+      }
+      await loadCart()
+    } catch (err) {
+      setItemErrors(prev => ({
+        ...prev,
+        [itemId]: err instanceof Error ? err.message : 'Unable to remove this item.',
+      }))
+    } finally {
+      setRemoving(prev => ({ ...prev, [itemId]: false }))
     }
   }
 
@@ -165,7 +191,7 @@ const CartPage = () => {
             </div>
           ) : (
             <ul className="cart-list">
-              {cartItems.map((item) => {
+              {cartItems.map(item => {
                 const currentQuantity = quantityInputs[item.id] ?? item.quantity
                 const availableQuantity = Math.max(0, item.product.availability.availableQuantity ?? 0)
                 const isUnavailable = !item.product.availability.isAvailable || availableQuantity <= 0
@@ -174,6 +200,7 @@ const CartPage = () => {
                   currentQuantity < 1 ||
                   currentQuantity > availableQuantity ||
                   updating[item.id]
+                const isRemoving = removing[item.id]
 
                 return (
                   <li key={item.id} className="cart-item">
@@ -199,7 +226,7 @@ const CartPage = () => {
                             ? `Only ${availableQuantity} units are available.`
                             : undefined
                         }
-                        onChange={(value) => handleQuantityChange(item.id, value)}
+                        onChange={value => handleQuantityChange(item.id, value)}
                         disabled={isUnavailable}
                       />
                       {itemErrors[item.id] && (
@@ -216,6 +243,14 @@ const CartPage = () => {
                         onClick={() => handleUpdateQuantity(item)}
                       >
                         {updating[item.id] ? 'Updating…' : 'Update quantity'}
+                      </button>
+                      <button
+                        type="button"
+                        className="text-button"
+                        disabled={isRemoving}
+                        onClick={() => handleRemoveItem(item.id)}
+                      >
+                        {isRemoving ? 'Removing…' : 'Remove'}
                       </button>
                     </div>
                   </li>
