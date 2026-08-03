@@ -36,6 +36,60 @@ enum PaymentStatusHistorySource {
   GATEWAY
 }
 
+enum SavedCartRestoreStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum SavedCartItemRestoreStatus {
+  PENDING
+  RESTORED
+  FAILED
+}
+
+enum CouponDiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+enum CouponRedemptionStatus {
+  PENDING
+  APPLIED
+  EXPIRED
+  INVALIDATED
+}
+
+enum ShippingEstimateStatus {
+  DRAFT
+  CONFIRMED
+  EXPIRED
+}
+
+enum CheckoutSessionStatus {
+  DRAFT
+  REVIEW
+  PENDING_PAYMENT
+  COMPLETED
+  ABANDONED
+}
+
+enum PaymentAttemptStatus {
+  PENDING
+  AUTHORIZED
+  FAILED
+  CANCELED
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
 model User {
   id              Int                      @id @default(autoincrement())
   email           String                   @unique
@@ -80,7 +134,22 @@ model Session {
   @@index([userId])
 }
 
-/// Stores password reset tokens for secure, auditable reset operations
+model CheckoutSession {
+  id        Int                    @id @default(autoincrement())
+  status    CheckoutSessionStatus  @default(DRAFT)
+  sessionId Int?
+  session   Session?               @relation("CheckoutSessionShopperSession", fields: [sessionId], references: [id], onDelete: Cascade)
+  userId    Int?
+  user      User?                  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  payments  Payment[]
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+
+  @@index([sessionId])
+  @@index([status])
+  @@index([userId])
+}
+
 model PasswordResetToken {
   id          Int      @id @default(autoincrement())
   tokenHash   String   @unique
@@ -203,17 +272,33 @@ enum PaymentAttemptStatus {
   CANCELED
 }
 
-model AttributeDefinition {
-  id          Int                  @id @default(autoincrement())
-  key         String               @unique
-  label       String
-  dataType    AttributeDataType    @default(TEXT)
-  filterable  Boolean              @default(true)
-  searchable  Boolean              @default(true)
-  products    ProductAttribute[]
-  specifications ProductSpecification[]
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
+enum OrderStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+model Order {
+  id                          Int                     @id @default(autoincrement())
+  referenceId                 String                  @unique
+  userId                      Int?
+  user                        User?                   @relation(fields: [userId], references: [id])
+  status                      OrderStatus             @default(PENDING_PAYMENT)
+  paymentReference            String?                 @unique
+  paymentGatewayTransactionId String?                 @unique
+  paymentConfirmedAt          DateTime?
+  paymentFailedAt             DateTime?
+  finalizedAt                 DateTime?
+  createdAt                   DateTime                @default(now())
+  updatedAt                   DateTime                @updatedAt
+  payments                    Payment[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([paymentReference])
+  @@index([paymentGatewayTransactionId])
 }
 
 model Product {
@@ -267,371 +352,6 @@ model Product {
   @@index([reservedQuantity])
 }
 
-model ProductAttribute {
-  id           Int                 @id @default(autoincrement())
-  productId    Int
-  definitionId Int
-  value        String
-  numericValue Decimal?
-  createdAt    DateTime            @default(now())
-  product      Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
-  definition   AttributeDefinition @relation(fields: [definitionId], references: [id], onDelete: Restrict)
-
-  @@unique([productId, definitionId])
-  @@index([definitionId])
-  @@index([value])
-}
-
-model ProductImage {
-  id         Int      @id @default(autoincrement())
-  productId  Int
-  url        String
-  altText    String?
-  focalPoint String?
-  provider   String?
-  sortOrder  Int      @default(0)
-  isPrimary  Boolean  @default(false)
-  metadata   Json?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@index([productId, sortOrder])
-  @@index([productId, isPrimary])
-}
-
-model ProductSpecification {
-  id           Int                 @id @default(autoincrement())
-  productId    Int
-  definitionId Int
-  value        String
-  displayName  String?
-  groupName    String?
-  displayOrder Int                 @default(0)
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-
-  product    Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
-  definition AttributeDefinition @relation(fields: [definitionId], references: [id], onDelete: Restrict)
-
-  @@unique([productId, definitionId])
-  @@index([productId])
-  @@index([definitionId])
-}
-
-model ProductInventoryLevel {
-  id               Int      @id @default(autoincrement())
-  productId        Int
-  locationCode     String
-  locationName     String?
-  quantityOnHand   Int      @default(0)
-  quantityReserved Int      @default(0)
-  quantityAvailable Int     @default(0)
-  isTracked        Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@unique([productId, locationCode])
-  @@index([productId])
-  @@index([locationCode])
-}
-
-model ProductRatingAggregate {
-  productId           Int     @id
-  ratingAverage       Decimal @default(0)
-  ratingCount         Int     @default(0)
-  ratingTotal         Int     @default(0)
-  ratingDistribution  Json?
-  updatedAt           DateTime @default(now()) @updatedAt
-
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@index([ratingAverage])
-  @@index([ratingCount])
-}
-
-model ProductRelationship {
-  id             Int                @id @default(autoincrement())
-  fromProductId  Int
-  toProductId    Int
-  type           RelatedProductType
-  createdAt      DateTime           @default(now())
-
-  fromProduct Product @relation("ProductRelationshipsFrom", fields: [fromProductId], references: [id], onDelete: Cascade)
-  toProduct   Product @relation("ProductRelationshipsTo", fields: [toProductId], references: [id], onDelete: Cascade)
-
-  @@unique([fromProductId, toProductId, type])
-  @@index([fromProductId])
-  @@index([toProductId])
-}
-
-model Coupon {
-  id            Int                     @id @default(autoincrement())
-  code          String                  @unique
-  description   String?
-  discountType  CouponDiscountType      @default(PERCENTAGE)
-  discountValue Decimal                 @default(0)
-  currency      String                  @default("USD")
-  usageLimit    Int?
-  usageCount    Int                     @default(0)
-  metadata      Json?
-  startsAt      DateTime?
-  expiresAt     DateTime?
-  createdAt     DateTime                @default(now())
-  updatedAt     DateTime                @updatedAt
-
-  redemptions   CouponRedemption[]
-
-  @@index([startsAt])
-  @@index([expiresAt])
-}
-
-model CouponRedemption {
-  id            Int                      @id @default(autoincrement())
-  couponId      Int
-  coupon        Coupon                   @relation(fields: [couponId], references: [id], onDelete: Cascade)
-  cartId        Int?
-  cart          Cart?                    @relation(fields: [cartId], references: [id])
-  userId        Int?
-  user          User?                    @relation(fields: [userId], references: [id])
-  status        CouponRedemptionStatus   @default(PENDING)
-  discountAmount Decimal?
-  metadata      Json?
-  appliedAt     DateTime?
-  createdAt     DateTime                 @default(now())
-  updatedAt     DateTime                 @updatedAt
-
-  @@index([couponId])
-  @@index([cartId])
-  @@index([userId])
-  @@index([status])
-}
-
-/// Cart and CartItem models for persistent cart functionality
-model Cart {
-  id                          Int                            @id @default(autoincrement())
-  userId                      Int        @unique
-  user                        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items                       CartItem[]
-  createdAt                   DateTime   @default(now())
-  updatedAt                   DateTime   @updatedAt
-  lastInventoryValidationAt   DateTime?
-  lastReservationSyncAt       DateTime?
-  pricingRecords              CartPricingRecord[]
-  inventoryReservations       CartInventoryReservation[]
-  shippingEstimates           CartShippingEstimate[]
-  couponRedemptions           CouponRedemption[]
-  paymentAttempts             PaymentAttempt[]
-
-  @@index([userId])
-}
-
-model CartItem {
-  id                        Int             @id @default(autoincrement())
-  cartId                    Int
-  productId                 Int
-  quantity                  Int             @default(1)
-  reservedQuantity          Int             @default(0)
-  reservationMetadata       Json?
-  status                    CartItemStatus  @default(ACTIVE)
-  removedAt                 DateTime?
-  createdAt                 DateTime        @default(now())
-  updatedAt                 DateTime        @updatedAt
-  lastValidatedAt           DateTime?
-  lastKnownAvailableQuantity Int?
-  cart                      Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  product                   Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
-  inventoryReservations     CartInventoryReservation[]
-
-  @@unique([cartId, productId])
-  @@index([cartId])
-  @@index([productId])
-  @@index([cartId, status])
-  @@index([productId, status])
-  @@index([cartId, lastValidatedAt])
-}
-
-model SavedCartSnapshot {
-  id               Int                        @id @default(autoincrement())
-  userId           Int
-  user             User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name             String?
-  metadata         Json?
-  restoreStatus    SavedCartRestoreStatus     @default(PENDING)
-  restoreRequestedAt DateTime?
-  restoredAt       DateTime?
-  createdAt        DateTime                   @default(now())
-  updatedAt        DateTime                   @default(now())
-  items            SavedCartItem[]
-
-  @@index([userId])
-  @@index([userId, createdAt])
-  @@index([userId, restoreStatus, createdAt])
-}
-
-model SavedCartItem {
-  id              Int                         @id @default(autoincrement())
-  snapshotId      Int
-  snapshot        SavedCartSnapshot           @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
-  productId       Int
-  product         Product                     @relation(fields: [productId], references: [id], onDelete: Restrict)
-  productSku      String?
-  quantity        Int                         @default(1)
-  unitPrice       Decimal?
-  restoreStatus   SavedCartItemRestoreStatus  @default(PENDING)
-  restoredQuantity Int?
-  restoreMessage  String?
-  createdAt       DateTime                    @default(now())
-  updatedAt       DateTime                    @updatedAt
-
-  @@unique([snapshotId, productId])
-  @@index([snapshotId])
-  @@index([productId])
-  @@index([snapshotId, restoreStatus])
-}
-
-model CartInventoryReservation {
-  id                Int      @id @default(autoincrement())
-  cartId            Int
-  cart              Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  cartItemId        Int?
-  cartItem          CartItem? @relation(fields: [cartItemId], references: [id], onDelete: Cascade)
-  productId         Int
-  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  reservedQuantity  Int      @default(0)
-  reservationSource String?
-  metadata          Json?
-  expiresAt         DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  @@index([cartId])
-  @@index([cartItemId])
-  @@index([productId])
-  @@index([expiresAt])
-}
-
-model CartShippingEstimate {
-  id                     Int                      @id @default(autoincrement())
-  cartId                 Int
-  cart                   Cart                     @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  provider               String
-  serviceLevel           String?
-  status                 ShippingEstimateStatus  @default(DRAFT)
-  currency               String                  @default("USD")
-  cost                   Decimal                 @default(0)
-  estimatedDeliveryDays  Int?
-  input                  Json
-  output                 Json?
-  validUntil             DateTime?
-  createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @default(now())
-
-  @@index([cartId])
-  @@index([provider])
-  @@index([status])
-  @@index([validUntil])
-}
-
-model CartPricingRecord {
-  id                     Int                      @id @default(autoincrement())
-  cartId                 Int
-  cart                   Cart                     @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  currency               String                  @default("USD")
-  subtotal               Decimal                 @default(0)
-  tax                    Decimal                 @default(0)
-  shippingCost           Decimal                 @default(0)
-  discountTotal          Decimal                 @default(0)
-  total                  Decimal                 @default(0)
-  couponRedemptionId     Int?
-  couponRedemption       CouponRedemption?       @relation(fields: [couponRedemptionId], references: [id])
-  shippingInput          Json?
-  shippingOutput         Json?
-  inventorySnapshot      Json?
-  metadata               Json?
-  createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @updatedAt
-
-  @@index([cartId])
-  @@index([createdAt])
-}
-
-model CheckoutSession {
-  id                        Int                              @id @default(autoincrement())
-  sessionToken              String                           @unique
-  guestSessionToken         String?                          @unique
-  userId                    Int?
-  user                      User?                            @relation(fields: [userId], references: [id], onDelete: SetNull)
-  shopperSessionId          Int?
-  shopperSession            Session?                         @relation("CheckoutSessionShopperSession", fields: [shopperSessionId], references: [id], onDelete: SetNull)
-  customerFirstName         String?
-  customerLastName          String?
-  customerEmail             String?
-  customerPhone             String?
-  customerNotes             String?
-  status                    CheckoutSessionStatus            @default(DRAFT)
-  metadata                  Json?
-  shippingAddress           CheckoutShippingAddress?
-  selectedShippingMethod    CheckoutSelectedShippingMethod?
-  draftOrderState           CheckoutDraftOrderState?
-  paymentAttempts           PaymentAttempt[]
-  createdAt                 DateTime                         @default(now())
-  updatedAt                 DateTime                         @updatedAt
-  payments                  Payment[]
-
-  @@index([status])
-}
-
-model CheckoutShippingAddress {
-  id                Int              @id @default(autoincrement())
-  checkoutSessionId Int              @unique
-  checkoutSession   CheckoutSession  @relation(fields: [checkoutSessionId], references: [id], onDelete: Cascade)
-  fullName          String?
-  company           String?
-  attention         String?
-  streetLine1       String
-  streetLine2       String?
-  city              String
-  state             String?
-  postalCode        String
-  country           String
-  phone             String?
-  metadata          Json?
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @default(now())
-}
-
-model CheckoutSelectedShippingMethod {
-  id                   Int             @id @default(autoincrement())
-  checkoutSessionId    Int             @unique
-  checkoutSession      CheckoutSession @relation(fields: [checkoutSessionId], references: [id], onDelete: Cascade)
-  provider             String
-  serviceLevel         String?
-  optionCode           String?
-  cost                 Decimal         @default(0)
-  currency             String          @default("USD")
-  estimatedDeliveryDays Int?
-  metadata             Json?
-  createdAt            DateTime        @default(now())
-  updatedAt            DateTime        @default(now())
-}
-
-model CheckoutDraftOrderState {
-  id                Int             @id @default(autoincrement())
-  checkoutSessionId Int             @unique
-  checkoutSession   CheckoutSession @relation(fields: [checkoutSessionId], references: [id], onDelete: Cascade)
-  state             Json?
-  pricingSnapshot   Json?
-  lastCompletedStep String?
-  expiresAt         DateTime?
-  metadata          Json?
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @default(now())
-}
-
 model Payment {
   id                Int                          @id @default(autoincrement())
   orderId           Int?
@@ -644,7 +364,8 @@ model Payment {
   status            PaymentStatus                @default(PENDING)
   amount            Decimal                      @default(0)
   currency          String                       @default("USD")
-  gatewayReference  String?
+  gatewayReference  String?                      @unique
+  paymentReference  String?                      @unique
   failureReason     String?
   metadata          Json?
   createdAt         DateTime                     @default(now())
@@ -659,79 +380,5 @@ model Payment {
   @@index([checkoutSessionId])
   @@index([userId])
   @@index([gatewayReference])
-}
-
-model PaymentAttempt {
-  id                   Int                    @id @default(autoincrement())
-  paymentId            Int?
-  payment              Payment?               @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  cartId               Int?
-  cart                 Cart?                  @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  checkoutSessionId    Int?
-  checkoutSession      CheckoutSession?       @relation(fields: [checkoutSessionId], references: [id], onDelete: SetNull)
-  orderId              Int?
-  selectedPaymentMethod String?
-  providerReference    String?
-  status               PaymentAttemptStatus   @default(PENDING)
-  failureReason        String?
-  providerMetadata     Json?
-  idempotencyKey       String?                @unique
-  amount               Decimal?
-  currency             String?
-  method               PaymentMethod?
-  metadata             Json?
-  createdAt            DateTime               @default(now())
-  initiatedAt          DateTime               @default(now())
-  completedAt          DateTime?
-  updatedAt            DateTime               @updatedAt
-  statusHistory        PaymentStatusHistory[] @relation("PaymentAttemptStatusHistory")
-
-  @@index([cartId])
-  @@index([checkoutSessionId])
-  @@index([orderId])
-  @@index([providerReference])
-  @@index([status])
-  @@index([idempotencyKey])
-  @@index([paymentId])
-}
-
-model PaymentRefund {
-  id               Int                 @id @default(autoincrement())
-  paymentId        Int
-  payment          Payment             @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  attemptId        Int?
-  attempt          PaymentAttempt?     @relation(fields: [attemptId], references: [id], onDelete: SetNull)
-  refundReference  String
-  gatewayReference String?
-  amount           Decimal             @default(0)
-  currency         String              @default("USD")
-  status           PaymentRefundStatus @default(PENDING)
-  failureReason    String?
-  metadata         Json?
-  createdAt        DateTime            @default(now())
-  completedAt      DateTime?
-
-  @@index([paymentId])
-  @@index([attemptId])
-  @@index([refundReference])
-}
-
-model PaymentStatusHistory {
-  id                 Int                        @id @default(autoincrement())
-  paymentId          Int
-  payment            Payment                    @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  attemptId          Int?
-  attempt            PaymentAttempt?            @relation("PaymentAttemptStatusHistory", fields: [attemptId], references: [id], onDelete: SetNull)
-  previousStatus     PaymentStatus
-  nextStatus         PaymentStatus
-  source             PaymentStatusHistorySource @default(INTERNAL)
-  gatewayEvent       String?
-  gatewayReference   String?
-  reason             String?
-  metadata           Json?
-  createdAt          DateTime                   @default(now())
-
-  @@index([paymentId])
-  @@index([attemptId])
-  @@index([gatewayReference])
+  @@index([paymentReference])
 }
