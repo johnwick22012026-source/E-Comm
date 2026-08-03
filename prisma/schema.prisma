@@ -8,25 +8,27 @@ datasource db {
 }
 
 model User {
-  id             Int       @id @default(autoincrement())
-  email          String    @unique
-  passwordHash   String
-  emailVerified  Boolean   @default(false)
+  id              Int                      @id @default(autoincrement())
+  email           String                   @unique
+  passwordHash    String
+  emailVerified   Boolean                  @default(false)
   emailVerifiedAt DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  verificationTokens EmailVerificationToken[]
-  sessions       Session[]
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  verificationTokens    EmailVerificationToken[]
+  sessions              Session[]
+  passwordResetTokens   PasswordResetToken[]
 }
 
 model EmailVerificationToken {
-  id         Int      @id @default(autoincrement())
-  token      String   @unique
-  userId     Int
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  usedAt     DateTime?
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  usedAt    DateTime?
 
   @@index([userId])
 }
@@ -42,4 +44,21 @@ model Session {
   active       Boolean  @default(true)
 
   @@index([userId])
+}
+
+/// Stores password reset tokens for secure, auditable reset operations
+model PasswordResetToken {
+  id          Int      @id @default(autoincrement())
+  tokenHash   String   @unique
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  usedAt      DateTime?
+  attemptedAt DateTime?
+  attempts    Int      @default(0)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([usedAt])
 }
