@@ -104,6 +104,20 @@ enum AttributeDataType {
   DATE
 }
 
+enum InventoryStatus {
+  IN_STOCK
+  BACKORDER
+  PREORDER
+  DISCONTINUED
+}
+
+enum RelatedProductType {
+  ACCESSORY
+  ALTERNATIVE
+  COMPLEMENTARY
+  SIMILAR
+}
+
 model AttributeDefinition {
   id          Int                  @id @default(autoincrement())
   key         String               @unique
@@ -112,31 +126,47 @@ model AttributeDefinition {
   filterable  Boolean              @default(true)
   searchable  Boolean              @default(true)
   products    ProductAttribute[]
+  specifications ProductSpecification[]
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
 }
 
 model Product {
-  id             Int                @id @default(autoincrement())
-  name           String
-  slug           String             @unique
-  description    String?
-  sku            String             @unique
-  categoryId     Int
-  category       Category           @relation(fields: [categoryId], references: [id])
-  subcategoryId  Int?
-  subcategory    Subcategory?       @relation(fields: [subcategoryId], references: [id])
-  brand          String?
-  price          Decimal            @default(0)
-  currency       String             @default("USD")
-  stockQuantity  Int                @default(0)
-  isAvailable    Boolean            @default(true)
-  isActive       Boolean            @default(true)
-  popularityScore Float             @default(0)
-  publishedAt    DateTime?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  attributes     ProductAttribute[]
+  id                  Int                      @id @default(autoincrement())
+  name                String
+  slug                String                   @unique
+  description         String?
+  sku                 String                   @unique
+  categoryId          Int
+  category            Category                 @relation(fields: [categoryId], references: [id])
+  subcategoryId       Int?
+  subcategory         Subcategory?             @relation(fields: [subcategoryId], references: [id])
+  brand               String?
+  price               Decimal                  @default(0)
+  currency            String                   @default("USD")
+  listPrice           Decimal                  @default(0)
+  salePrice           Decimal?
+  saleStartsAt        DateTime?
+  saleEndsAt          DateTime?
+  priceUpdatedAt      DateTime                 @default(now())
+  stockQuantity       Int                      @default(0)
+  availableQuantity   Int                      @default(0)
+  reservedQuantity    Int                      @default(0)
+  inventoryStatus     InventoryStatus          @default(IN_STOCK)
+  availabilityUpdatedAt DateTime               @default(now())
+  isAvailable         Boolean                  @default(true)
+  isActive            Boolean                  @default(true)
+  popularityScore     Float                    @default(0)
+  publishedAt         DateTime?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  attributes          ProductAttribute[]
+  images              ProductImage[]
+  specifications      ProductSpecification[]
+  inventoryLevels     ProductInventoryLevel[]
+  ratingAggregate     ProductRatingAggregate?
+  relatedProductsFrom ProductRelationship[]     @relation("ProductRelationshipsFrom")
+  relatedProductsTo   ProductRelationship[]     @relation("ProductRelationshipsTo")
 
   @@index([categoryId, isActive, price])
   @@index([categoryId, isActive, createdAt])
@@ -144,6 +174,10 @@ model Product {
   @@index([brand])
   @@index([isActive, price])
   @@index([publishedAt])
+  @@index([inventoryStatus])
+  @@index([isAvailable, inventoryStatus])
+  @@index([availableQuantity])
+  @@index([reservedQuantity])
 }
 
 model ProductAttribute {
@@ -159,4 +193,90 @@ model ProductAttribute {
   @@unique([productId, definitionId])
   @@index([definitionId])
   @@index([value])
+}
+
+model ProductImage {
+  id         Int      @id @default(autoincrement())
+  productId  Int
+  url        String
+  altText    String?
+  focalPoint String?
+  provider   String?
+  sortOrder  Int      @default(0)
+  isPrimary  Boolean  @default(false)
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, sortOrder])
+  @@index([productId, isPrimary])
+}
+
+model ProductSpecification {
+  id           Int                 @id @default(autoincrement())
+  productId    Int
+  definitionId Int
+  value        String
+  displayName  String?
+  groupName    String?
+  displayOrder Int                 @default(0)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  product    Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  definition AttributeDefinition @relation(fields: [definitionId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, definitionId])
+  @@index([productId])
+  @@index([definitionId])
+}
+
+model ProductInventoryLevel {
+  id               Int      @id @default(autoincrement())
+  productId        Int
+  locationCode     String
+  locationName     String?
+  quantityOnHand   Int      @default(0)
+  quantityReserved Int      @default(0)
+  quantityAvailable Int     @default(0)
+  isTracked        Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, locationCode])
+  @@index([productId])
+  @@index([locationCode])
+}
+
+model ProductRatingAggregate {
+  productId           Int     @id
+  ratingAverage       Decimal @default(0)
+  ratingCount         Int     @default(0)
+  ratingTotal         Int     @default(0)
+  ratingDistribution  Json?
+  updatedAt           DateTime @default(now()) @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([ratingAverage])
+  @@index([ratingCount])
+}
+
+model ProductRelationship {
+  id             Int                @id @default(autoincrement())
+  fromProductId  Int
+  toProductId    Int
+  type           RelatedProductType
+  createdAt      DateTime           @default(now())
+
+  fromProduct Product @relation("ProductRelationshipsFrom", fields: [fromProductId], references: [id], onDelete: Cascade)
+  toProduct   Product @relation("ProductRelationshipsTo", fields: [toProductId], references: [id], onDelete: Cascade)
+
+  @@unique([fromProductId, toProductId, type])
+  @@index([fromProductId])
+  @@index([toProductId])
 }
