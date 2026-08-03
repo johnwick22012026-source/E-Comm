@@ -21,6 +21,7 @@ model User {
   passwordResetTokens   PasswordResetToken[]
   savedCartSnapshots    SavedCartSnapshot[]
   couponRedemptions     CouponRedemption[]
+  checkoutSessions      CheckoutSession[]
 }
 
 model EmailVerificationToken {
@@ -44,6 +45,8 @@ model Session {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   active       Boolean  @default(true)
+
+  checkoutSessions CheckoutSession[] @relation("CheckoutSessionShopperSession")
 
   @@index([userId])
 }
@@ -154,6 +157,14 @@ enum ShippingEstimateStatus {
   DRAFT
   CONFIRMED
   EXPIRED
+}
+
+enum CheckoutSessionStatus {
+  DRAFT
+  REVIEW
+  PENDING_PAYMENT
+  COMPLETED
+  ABANDONED
 }
 
 model AttributeDefinition {
@@ -509,4 +520,75 @@ model CartPricingRecord {
 
   @@index([cartId])
   @@index([createdAt])
+}
+
+model CheckoutSession {
+  id                        Int                              @id @default(autoincrement())
+  sessionToken              String                           @unique
+  guestSessionToken         String?                          @unique
+  userId                    Int?
+  user                      User?                            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  shopperSessionId          Int?
+  shopperSession            Session?                         @relation("CheckoutSessionShopperSession", fields: [shopperSessionId], references: [id], onDelete: SetNull)
+  customerFirstName         String?
+  customerLastName          String?
+  customerEmail             String?
+  customerPhone             String?
+  customerNotes             String?
+  status                    CheckoutSessionStatus            @default(DRAFT)
+  metadata                  Json?
+  shippingAddress           CheckoutShippingAddress?
+  selectedShippingMethod    CheckoutSelectedShippingMethod?
+  draftOrderState           CheckoutDraftOrderState?
+  createdAt                 DateTime                         @default(now())
+  updatedAt                 DateTime                         @updatedAt
+
+  @@index([status])
+}
+
+model CheckoutShippingAddress {
+  id                Int              @id @default(autoincrement())
+  checkoutSessionId Int              @unique
+  checkoutSession   CheckoutSession  @relation(fields: [checkoutSessionId], references: [id], onDelete: Cascade)
+  fullName          String?
+  company           String?
+  attention         String?
+  streetLine1       String
+  streetLine2       String?
+  city              String
+  state             String?
+  postalCode        String
+  country           String
+  phone             String?
+  metadata          Json?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+model CheckoutSelectedShippingMethod {
+  id                   Int             @id @default(autoincrement())
+  checkoutSessionId    Int             @unique
+  checkoutSession      CheckoutSession @relation(fields: [checkoutSessionId], references: [id], onDelete: Cascade)
+  provider             String
+  serviceLevel         String?
+  optionCode           String?
+  cost                 Decimal         @default(0)
+  currency             String          @default("USD")
+  estimatedDeliveryDays Int?
+  metadata             Json?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+}
+
+model CheckoutDraftOrderState {
+  id                Int             @id @default(autoincrement())
+  checkoutSessionId Int             @unique
+  checkoutSession   CheckoutSession @relation(fields: [checkoutSessionId], references: [id], onDelete: Cascade)
+  state             Json?
+  pricingSnapshot   Json?
+  lastCompletedStep String?
+  expiresAt         DateTime?
+  metadata          Json?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 }
