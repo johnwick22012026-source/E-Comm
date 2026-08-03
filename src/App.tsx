@@ -9,6 +9,7 @@ import RequestPasswordResetPage from './pages/RequestPasswordResetPage'
 import SetNewPasswordPage from './pages/SetNewPasswordPage'
 import CatalogPage from './pages/CatalogPage'
 import ProductDetailPage from './pages/ProductDetailPage'
+import CartPage from './pages/CartPage'
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
             <Route path="password-reset/set" element={<SetNewPasswordPage />} />
             <Route path="catalog" element={<CatalogPage />} />
             <Route path="products/:productId" element={<ProductDetailPage />} />
+            <Route path="cart" element={<CartPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
