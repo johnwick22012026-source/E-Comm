@@ -62,3 +62,101 @@ model PasswordResetToken {
   @@index([expiresAt])
   @@index([usedAt])
 }
+
+model Category {
+  id          Int          @id @default(autoincrement())
+  name        String
+  slug        String       @unique
+  description String?
+  parentId    Int?
+  parent      Category?    @relation("CategoryToParent", fields: [parentId], references: [id])
+  children    Category[]   @relation("CategoryToParent")
+  subcategories Subcategory[]
+  products    Product[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([slug])
+}
+
+model Subcategory {
+  id          Int            @id @default(autoincrement())
+  name        String
+  slug        String
+  categoryId  Int
+  category    Category       @relation(fields: [categoryId], references: [id])
+  parentId    Int?
+  parent      Subcategory?   @relation("SubcategoryChildren", fields: [parentId], references: [id])
+  children    Subcategory[]  @relation("SubcategoryChildren")
+  products    Product[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([categoryId, slug])
+  @@index([slug])
+}
+
+enum AttributeDataType {
+  TEXT
+  INTEGER
+  DECIMAL
+  BOOLEAN
+  DATE
+}
+
+model AttributeDefinition {
+  id          Int                  @id @default(autoincrement())
+  key         String               @unique
+  label       String
+  dataType    AttributeDataType    @default(TEXT)
+  filterable  Boolean              @default(true)
+  searchable  Boolean              @default(true)
+  products    ProductAttribute[]
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+}
+
+model Product {
+  id             Int                @id @default(autoincrement())
+  name           String
+  slug           String             @unique
+  description    String?
+  sku            String             @unique
+  categoryId     Int
+  category       Category           @relation(fields: [categoryId], references: [id])
+  subcategoryId  Int?
+  subcategory    Subcategory?       @relation(fields: [subcategoryId], references: [id])
+  brand          String?
+  price          Decimal            @default(0)
+  currency       String             @default("USD")
+  stockQuantity  Int                @default(0)
+  isAvailable    Boolean            @default(true)
+  isActive       Boolean            @default(true)
+  popularityScore Float             @default(0)
+  publishedAt    DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  attributes     ProductAttribute[]
+
+  @@index([categoryId, isActive, price])
+  @@index([categoryId, isActive, createdAt])
+  @@index([categoryId, isActive, popularityScore])
+  @@index([brand])
+  @@index([isActive, price])
+  @@index([publishedAt])
+}
+
+model ProductAttribute {
+  id           Int                 @id @default(autoincrement())
+  productId    Int
+  definitionId Int
+  value        String
+  numericValue Decimal?
+  createdAt    DateTime            @default(now())
+  product      Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  definition   AttributeDefinition @relation(fields: [definitionId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, definitionId])
+  @@index([definitionId])
+  @@index([value])
+}
