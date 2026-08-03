@@ -18,8 +18,14 @@ const Layout = () => {
           Commerce Hub
         </Link>
         <nav className="page-nav" aria-label="Primary">
-          <NavLink to="/" className={({ isActive }) => (isActive ? 'is-active' : '')} end>
+          <NavLink to="/" end className={({ isActive }) => (isActive ? 'is-active' : '')}>
             Account
+          </NavLink>
+          <NavLink to="/catalog" className={({ isActive }) => (isActive ? 'is-active' : '')}>
+            Catalog
+          </NavLink>
+          <NavLink to="/cart" className={({ isActive }) => (isActive ? 'is-active' : '')}>
+            Cart
           </NavLink>
           <NavLink to="/register" className={({ isActive }) => (isActive ? 'is-active' : '')}>
             Register
