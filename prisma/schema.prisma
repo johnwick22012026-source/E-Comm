@@ -14,6 +14,28 @@ enum PaymentMethod {
   WALLET
 }
 
+enum PaymentStatus {
+  DRAFT
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+  VOIDED
+}
+
+enum PaymentRefundStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+enum PaymentStatusHistorySource {
+  INTERNAL
+  GATEWAY
+}
+
 model User {
   id              Int                      @id @default(autoincrement())
   email           String                   @unique
@@ -558,6 +580,7 @@ model CheckoutSession {
   paymentAttempts           PaymentAttempt[]
   createdAt                 DateTime                         @default(now())
   updatedAt                 DateTime                         @updatedAt
+  payments                  Payment[]
 
   @@index([status])
 }
@@ -609,8 +632,39 @@ model CheckoutDraftOrderState {
   updatedAt         DateTime        @default(now())
 }
 
+model Payment {
+  id                Int                          @id @default(autoincrement())
+  orderId           Int?
+  cartId            Int?
+  cart              Cart?                        @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  checkoutSessionId Int?
+  checkoutSession   CheckoutSession?             @relation(fields: [checkoutSessionId], references: [id], onDelete: SetNull)
+  userId            Int?
+  user              User?                        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  status            PaymentStatus                @default(PENDING)
+  amount            Decimal                      @default(0)
+  currency          String                       @default("USD")
+  gatewayReference  String?
+  failureReason     String?
+  metadata          Json?
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+
+  attempts           PaymentAttempt[]
+  refunds            PaymentRefund[]
+  statusHistory      PaymentStatusHistory[]
+
+  @@index([orderId])
+  @@index([cartId])
+  @@index([checkoutSessionId])
+  @@index([userId])
+  @@index([gatewayReference])
+}
+
 model PaymentAttempt {
   id                   Int                    @id @default(autoincrement())
+  paymentId            Int?
+  payment              Payment?               @relation(fields: [paymentId], references: [id], onDelete: Cascade)
   cartId               Int?
   cart                 Cart?                  @relation(fields: [cartId], references: [id], onDelete: Cascade)
   checkoutSessionId    Int?
@@ -630,6 +684,7 @@ model PaymentAttempt {
   initiatedAt          DateTime               @default(now())
   completedAt          DateTime?
   updatedAt            DateTime               @updatedAt
+  statusHistory        PaymentStatusHistory[] @relation("PaymentAttemptStatusHistory")
 
   @@index([cartId])
   @@index([checkoutSessionId])
@@ -637,4 +692,46 @@ model PaymentAttempt {
   @@index([providerReference])
   @@index([status])
   @@index([idempotencyKey])
+  @@index([paymentId])
+}
+
+model PaymentRefund {
+  id               Int                 @id @default(autoincrement())
+  paymentId        Int
+  payment          Payment             @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  attemptId        Int?
+  attempt          PaymentAttempt?     @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+  refundReference  String
+  gatewayReference String?
+  amount           Decimal             @default(0)
+  currency         String              @default("USD")
+  status           PaymentRefundStatus @default(PENDING)
+  failureReason    String?
+  metadata         Json?
+  createdAt        DateTime            @default(now())
+  completedAt      DateTime?
+
+  @@index([paymentId])
+  @@index([attemptId])
+  @@index([refundReference])
+}
+
+model PaymentStatusHistory {
+  id                 Int                        @id @default(autoincrement())
+  paymentId          Int
+  payment            Payment                    @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  attemptId          Int?
+  attempt            PaymentAttempt?            @relation("PaymentAttemptStatusHistory", fields: [attemptId], references: [id], onDelete: SetNull)
+  previousStatus     PaymentStatus
+  nextStatus         PaymentStatus
+  source             PaymentStatusHistorySource @default(INTERNAL)
+  gatewayEvent       String?
+  gatewayReference   String?
+  reason             String?
+  metadata           Json?
+  createdAt          DateTime                   @default(now())
+
+  @@index([paymentId])
+  @@index([attemptId])
+  @@index([gatewayReference])
 }
