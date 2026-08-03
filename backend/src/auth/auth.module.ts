@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { AuthService } from './auth.service'
 import { AuthController } from './auth.controller'
+import { PasswordResetController } from './password-reset.controller'
 import { PrismaModule } from '../prisma/prisma.module'
 import { NotificationModule } from '../notifications/notification.module'
 import { JwtAuthGuard } from './guards/jwt-auth.guard'
@@ -24,6 +25,6 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard'
     }),
   ],
   providers: [AuthService, JwtAuthGuard],
-  controllers: [AuthController],
+  controllers: [AuthController, PasswordResetController],
 })
 export class AuthModule {}
