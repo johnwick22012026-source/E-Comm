@@ -123,27 +123,27 @@ enum CartItemStatus {
   REMOVED
 }
 
+enum SavedPaymentPreferenceState {
+  ACTIVE
+  REVOKED
+  DELETED
+}
+
 // === CUSTOMER PROFILE, ADDRESSES & PREFERENCES ===
 model CustomerProfile {
   id           Int                       @id @default(autoincrement())
   userId       Int                       @unique
   user         User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  firstName    String?                   
-  lastName     String?                   
-  phone        String?                   
-  dateOfBirth  DateTime?                 
-  addresses    Address[]                 
-  preferences  CommunicationPreference[] 
+  firstName    String?
+  lastName     String?
+  phone        String?
+  dateOfBirth  DateTime?
+  addresses    Address[]
+  preferences  CommunicationPreference[]
   createdAt    DateTime                  @default(now())
   updatedAt    DateTime                  @updatedAt
 
   @@index([userId])
-}
-
-enum CommunicationChannel {
-  EMAIL
-  SMS
-  PUSH
 }
 
 model Address {
@@ -167,12 +167,6 @@ model Address {
   @@index([profileId])
 }
 
-enum CommunicationChannel {
-  EMAIL
-  SMS
-  PUSH
-}
-
 model CommunicationPreference {
   id           Int                  @id @default(autoincrement())
   profileId    Int
@@ -185,6 +179,28 @@ model CommunicationPreference {
 
   @@unique([profileId, channel, preference])
   @@index([profileId])
+}
+
+model SavedPaymentPreference {
+  id              Int                              @id @default(autoincrement())
+  userId          Int
+  user            User                             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gatewayToken    String
+  maskedDisplay   String                            // e.g. "**** **** **** 4242"
+  brand           String?
+  method          PaymentMethod?
+  expiryMonth     Int?
+  expiryYear      Int?
+  billingNickname String?
+  isDefault       Boolean                           @default(false)
+  state           SavedPaymentPreferenceState       @default(ACTIVE)
+  revokedAt       DateTime?
+  deletedAt       DateTime?
+  createdAt       DateTime                          @default(now())
+  updatedAt       DateTime                          @updatedAt
+
+  @@index([userId])
+  @@index([userId, isDefault, state])
 }
 
 // === EXISTING SCHEMA BELOW ===
