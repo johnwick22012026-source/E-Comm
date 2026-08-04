@@ -1,4 +1,5 @@
-import { FormEvent, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { parseApiError } from '../lib/api'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3333'
 
@@ -14,6 +15,18 @@ type MethodConfig = {
 type FieldKey = 'cardToken' | 'upiId' | 'bankCode' | 'returnUrl' | 'walletProvider' | 'walletAccount'
 
 type FieldValueMap = Record<FieldKey, string>
+
+type CheckoutSavedMethod = {
+  id: number
+  maskedDisplay: string
+  brand?: string | null
+  expiryMonth?: number | null
+  expiryYear?: number | null
+  billingNickname?: string | null
+  isDefault: boolean
+  gatewayToken?: string | null
+  method?: PaymentMethodKey | null
+}
 
 const fieldPlaceholders = {
   cardToken: 'Enter the token issued by the gateway (e.g. tok_abc123)',
@@ -69,8 +82,55 @@ const CheckoutPage = () => {
   const [status, setStatus] = useState<RequestStatus>('idle')
   const [message, setMessage] = useState<string>('Choose a payment method to begin authorization.')
   const [errors, setErrors] = useState<string[]>([])
+  const [savedMethods, setSavedMethods] = useState<CheckoutSavedMethod[]>([])
+  const [savedLoading, setSavedLoading] = useState(true)
+  const [savedError, setSavedError] = useState<string | null>(null)
+  const [selectedSavedMethodId, setSelectedSavedMethodId] = useState<number | null>(null)
 
   const methodConfig = methodConfigs[selectedMethod]
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setSavedLoading(true)
+    setSavedError(null)
+    fetch(`${API_BASE}/payment-methods`, {
+      credentials: 'include',
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const message = await parseApiError(response, 'Unable to load saved payment methods.')
+          throw new Error(message)
+        }
+        return response.json()
+      })
+      .then((data) => {
+        const items = Array.isArray(data.items) ? data.items : []
+        setSavedMethods(items)
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) {
+          return
+        }
+        setSavedError(err instanceof Error ? err.message : 'Failed to load saved payment methods.')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setSavedLoading(false)
+        }
+      })
+    return () => controller.abort()
+  }, [])
+
+  const selectedSavedMethod = savedMethods.find((method) => method.id === selectedSavedMethodId) ?? null
+  const isUsingSavedMethod = Boolean(selectedSavedMethod)
+
+  const selectedSavedMethodLabel = useMemo(() => {
+    if (selectedSavedMethod) {
+      return selectedSavedMethod.billingNickname ?? selectedSavedMethod.maskedDisplay
+    }
+    return methodConfig.label
+  }, [selectedSavedMethod, methodConfig.label])
 
   const handleFieldChange = (field: FieldKey, value: string) => {
     setFields((prev) => ({ ...prev, [field]: value }))
@@ -124,9 +184,37 @@ const CheckoutPage = () => {
     return { ...basePayload, ...detailPayload }
   }
 
+  const buildSavedPayload = (method: CheckoutSavedMethod) => {
+    const methodKey = method.method as PaymentMethodKey
+    if (!methodKey || !(methodKey in methodConfigs)) {
+      throw new Error('Saved payment method type is unrecognized. Please choose another method.')
+    }
+    const token = method.gatewayToken?.trim()
+    if (!token) {
+      throw new Error('Saved payment token is unavailable. Please add the method again to continue.')
+    }
+    const basePayload: Record<string, unknown> = {
+      method: methodKey,
+      amount: Number(Number(amount).toFixed(2)),
+      currency: currency.trim().toUpperCase(),
+      cartId: Number(cartId),
+      metadata: { savedPaymentMethodId: method.id },
+    }
+    switch (methodKey) {
+      case 'CARD':
+        return { ...basePayload, cardToken: token }
+      case 'UPI':
+        return { ...basePayload, upiId: token }
+      case 'NET_BANKING':
+        return { ...basePayload, bankCode: token, returnUrl: fields.returnUrl.trim() }
+      case 'WALLET':
+        return { ...basePayload, walletProvider: token }
+    }
+  }
+
   const handleAuthorize = async (event: FormEvent) => {
     event.preventDefault()
-    const validationErrors = validate()
+    const validationErrors = isUsingSavedMethod ? [] : validate()
     if (validationErrors.length > 0) {
       setErrors(validationErrors)
       setStatus('error')
@@ -134,11 +222,28 @@ const CheckoutPage = () => {
       return
     }
 
+    if (isUsingSavedMethod && !selectedSavedMethod) {
+      setErrors(['Select a saved payment method or switch to a new one.'])
+      setStatus('error')
+      return
+    }
+
     setErrors([])
     setStatus('loading')
-    setMessage('Sending authorization request…')
+    setMessage(isUsingSavedMethod ? 'Authorizing via saved payment method…' : 'Sending authorization request…')
 
-    const payload = buildPayload()
+    let payload: Record<string, unknown>
+
+    try {
+      payload = isUsingSavedMethod
+        ? buildSavedPayload(selectedSavedMethod!)
+        : buildPayload()
+    } catch (error) {
+      setStatus('error')
+      setMessage(error instanceof Error ? error.message : 'Unable to prepare payment request.')
+      return
+    }
+
     const idempotencyKey = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Date.now())
 
     try {
@@ -160,8 +265,9 @@ const CheckoutPage = () => {
         return
       }
 
-      setStatus(body?.success && body.status === 'authorized' ? 'success' : 'error')
-      if (body.success && body.status === 'authorized') {
+      const success = body?.success && body.status === 'authorized'
+      setStatus(success ? 'success' : 'error')
+      if (success) {
         setMessage(`Payment authorized (ref: ${body.providerReference ?? 'unknown'}). Proceed to order review.`)
       } else {
         setMessage(body?.message ?? 'Payment was declined. Review the details and try again.')
@@ -172,22 +278,84 @@ const CheckoutPage = () => {
     }
   }
 
-  const requestSummary = useMemo(() => ({
-    amount: Number(amount) || 0,
-    currency: currency.trim().toUpperCase() || 'USD',
-    cartId: Number(cartId) || 0,
-  }), [amount, currency, cartId])
+  const requestSummary = useMemo(
+    () => ({
+      amount: Number(amount) || 0,
+      currency: currency.trim().toUpperCase() || 'USD',
+      cartId: Number(cartId) || 0,
+      methodLabel: selectedSavedMethodLabel,
+    }),
+    [amount, currency, cartId, selectedSavedMethodLabel],
+  )
+
+  const handleSavedSelection = (methodId: number) => {
+    setSelectedSavedMethodId((prev) => (prev === methodId ? prev : methodId))
+    setStatus('idle')
+    setMessage('Review the saved method and click authorize when ready.')
+  }
 
   return (
     <section className="checkout-page">
       <header className="checkout-header">
         <p className="catalog-tag">Checkout</p>
         <h1>Authorize your payment</h1>
-        <p className="muted">Select the method that matches the payment provider flow we support.</p>
+        <p className="muted">You can use a saved method or add a new one via the secure flow below.</p>
       </header>
 
       <div className="checkout-grid">
         <div className="checkout-form-area">
+          <div className="saved-methods-panel">
+            <header className="saved-methods-panel__header">
+              <div>
+                <p className="catalog-tag">Saved payment methods</p>
+                <h3>Select a stored option</h3>
+              </div>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setSelectedSavedMethodId(null)}
+              >
+                Use a different method
+              </button>
+            </header>
+            {savedLoading ? (
+              <p className="muted">Loading saved payment options…</p>
+            ) : savedError ? (
+              <p className="status status--error">{savedError}</p>
+            ) : savedMethods.length === 0 ? (
+              <p className="muted">No saved payment methods found. Add one below.</p>
+            ) : (
+              <div className="saved-methods-grid">
+                {savedMethods.map((method) => {
+                  const expiry = method.expiryMonth && method.expiryYear
+                    ? `${String(method.expiryMonth).padStart(2, '0')}/${method.expiryYear}`
+                    : 'Expiry unknown'
+                  const label = method.billingNickname ?? method.maskedDisplay
+                  return (
+                    <button
+                      key={method.id}
+                      type="button"
+                      className={`saved-method-card ${selectedSavedMethodId === method.id ? 'is-selected' : ''}`}
+                      onClick={() => handleSavedSelection(method.id)}
+                      aria-pressed={selectedSavedMethodId === method.id}
+                    >
+                      <div className="saved-method-card__header">
+                        <span className="saved-method-card__label">{label}</span>
+                        {method.isDefault && <span className="saved-method-card__badge">Default</span>}
+                      </div>
+                      <p className="saved-method-card__details">
+                        {method.maskedDisplay} • {method.brand ?? 'Tokenized'} • {expiry}
+                      </p>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            <p className="saved-method-note">
+              Only tokenized payment references issued by your gateway are stored. No full card or wallet data is saved.
+            </p>
+          </div>
+
           <form className="checkout-form" onSubmit={handleAuthorize}>
             <div className="checkout-methods" role="group" aria-label="Payment method selection">
               {Object.entries(methodConfigs).map(([key, config]) => (
@@ -195,7 +363,10 @@ const CheckoutPage = () => {
                   key={key}
                   type="button"
                   className={`checkout-method ${selectedMethod === key ? 'is-active' : ''}`}
-                  onClick={() => setSelectedMethod(key as PaymentMethodKey)}
+                  onClick={() => {
+                    setSelectedSavedMethodId(null)
+                    setSelectedMethod(key as PaymentMethodKey)
+                  }}
                 >
                   <span className="checkout-method__label">{config.label}</span>
                   <span className="checkout-method__description">{config.description}</span>
@@ -205,73 +376,77 @@ const CheckoutPage = () => {
 
             <p className="checkout-helper">{methodConfig.helper}</p>
 
-            {selectedMethod === 'CARD' && (
-              <label className="field">
-                <span>Card token</span>
-                <input
-                  type="text"
-                  placeholder={fieldPlaceholders.cardToken}
-                  value={fields.cardToken}
-                  onChange={(event) => handleFieldChange('cardToken', event.target.value)}
-                />
-              </label>
-            )}
-
-            {selectedMethod === 'UPI' && (
-              <label className="field">
-                <span>UPI ID</span>
-                <input
-                  type="text"
-                  placeholder={fieldPlaceholders.upiId}
-                  value={fields.upiId}
-                  onChange={(event) => handleFieldChange('upiId', event.target.value)}
-                />
-              </label>
-            )}
-
-            {selectedMethod === 'NET_BANKING' && (
+            {!isUsingSavedMethod && (
               <>
-                <label className="field">
-                  <span>Bank code</span>
-                  <input
-                    type="text"
-                    placeholder={fieldPlaceholders.bankCode}
-                    value={fields.bankCode}
-                    onChange={(event) => handleFieldChange('bankCode', event.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span>Return URL</span>
-                  <input
-                    type="url"
-                    placeholder={fieldPlaceholders.returnUrl}
-                    value={fields.returnUrl}
-                    onChange={(event) => handleFieldChange('returnUrl', event.target.value)}
-                  />
-                </label>
-              </>
-            )}
+                {selectedMethod === 'CARD' && (
+                  <label className="field">
+                    <span>Card token</span>
+                    <input
+                      type="text"
+                      placeholder={fieldPlaceholders.cardToken}
+                      value={fields.cardToken}
+                      onChange={(event) => handleFieldChange('cardToken', event.target.value)}
+                    />
+                  </label>
+                )}
 
-            {selectedMethod === 'WALLET' && (
-              <>
-                <label className="field">
-                  <span>Wallet provider</span>
-                  <input
-                    type="text"
-                    placeholder={fieldPlaceholders.walletProvider}
-                    value={fields.walletProvider}
-                    onChange={(event) => handleFieldChange('walletProvider', event.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span>Wallet account (optional)</span>
-                  <input
-                    type="text"
-                    placeholder={fieldPlaceholders.walletAccount}
-                    value={fields.walletAccount}
-                    onChange={(event) => handleFieldChange('walletAccount', event.target.value)}
-                  />
-                </label>
+                {selectedMethod === 'UPI' && (
+                  <label className="field">
+                    <span>UPI ID</span>
+                    <input
+                      type="text"
+                      placeholder={fieldPlaceholders.upiId}
+                      value={fields.upiId}
+                      onChange={(event) => handleFieldChange('upiId', event.target.value)}
+                    />
+                  </label>
+                )}
+
+                {selectedMethod === 'NET_BANKING' && (
+                  <>
+                    <label className="field">
+                      <span>Bank code</span>
+                      <input
+                        type="text"
+                        placeholder={fieldPlaceholders.bankCode}
+                        value={fields.bankCode}
+                        onChange={(event) => handleFieldChange('bankCode', event.target.value)}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Return URL</span>
+                      <input
+                        type="url"
+                        placeholder={fieldPlaceholders.returnUrl}
+                        value={fields.returnUrl}
+                        onChange={(event) => handleFieldChange('returnUrl', event.target.value)}
+                      />
+                    </label>
+                  </>
+                )}
+
+                {selectedMethod === 'WALLET' && (
+                  <>
+                    <label className="field">
+                      <span>Wallet provider</span>
+                      <input
+                        type="text"
+                        placeholder={fieldPlaceholders.walletProvider}
+                        value={fields.walletProvider}
+                        onChange={(event) => handleFieldChange('walletProvider', event.target.value)}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Wallet account (optional)</span>
+                      <input
+                        type="text"
+                        placeholder={fieldPlaceholders.walletAccount}
+                        value={fields.walletAccount}
+                        onChange={(event) => handleFieldChange('walletAccount', event.target.value)}
+                      />
+                    </label>
+                  </>
+                )}
               </>
             )}
 
@@ -284,6 +459,7 @@ const CheckoutPage = () => {
                   step="0.01"
                   value={amount}
                   onChange={(event) => setAmount(event.target.value)}
+                  disabled={isUsingSavedMethod}
                 />
               </label>
               <label className="field">
@@ -292,6 +468,7 @@ const CheckoutPage = () => {
                   type="text"
                   value={currency}
                   onChange={(event) => setCurrency(event.target.value)}
+                  disabled={isUsingSavedMethod}
                 />
               </label>
               <label className="field">
@@ -302,6 +479,7 @@ const CheckoutPage = () => {
                   step="1"
                   value={cartId}
                   onChange={(event) => setCartId(event.target.value)}
+                  disabled={isUsingSavedMethod}
                 />
               </label>
             </div>
@@ -332,7 +510,7 @@ const CheckoutPage = () => {
           <dl>
             <div>
               <dt>Selected method</dt>
-              <dd>{methodConfig.label}</dd>
+              <dd>{requestSummary.methodLabel}</dd>
             </div>
             <div>
               <dt>Amount</dt>
