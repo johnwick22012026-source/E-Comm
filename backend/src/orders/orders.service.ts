@@ -1,8 +1,30 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
 import { CreateOrderFromPaymentDto, PaymentCaptureStatus } from './dto/create-order-from-payment.dto'
-import { Prisma, OrderStatus, PaymentAttemptStatus, PaymentStatus } from '@prisma/client'
+import {
+  Invoice,
+  Order,
+  OrderLineItem,
+  PaymentAttemptStatus,
+  PaymentStatus,
+  Prisma,
+  Shipment,
+} from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { randomBytes } from 'crypto'
+import { ListOrdersQueryDto, OrderSortField, SortDirection } from './dto/order-query.dto'
+import {
+  OrderDetailResponseDto,
+  OrderListItemDto,
+  OrderLineItemDto,
+  OrderPaymentDto,
+  OrderShipmentDto,
+  OrderInvoiceDto,
+} from './dto/order-response.dto'
 
 export type OrderCreationSummary = {
   id: number
@@ -120,21 +142,173 @@ export class OrdersService {
     return this.mapSummary(order, payment)
   }
 
-  private mapSummary(
-    order: { id: number; referenceId: string; status: OrderStatus; paymentReference: string | null; paymentGatewayTransactionId: string | null; createdAt: Date },
-    payment: { amount: Prisma.Decimal; currency: string; status: PaymentStatus } | null,
-  ): OrderCreationSummary {
+  async listOrdersForCustomer(
+    userId: number | undefined,
+    query: ListOrdersQueryDto,
+  ): Promise<{ meta: { total: number; page: number; limit: number }; data: OrderListItemDto[] }> {
+    if (!userId) {
+      throw new BadRequestException('Authenticated user context is required to list orders')
+    }
+
+    const skip = (query.page - 1) * query.limit
+    const orderByField = this.buildOrderBy(query.sortBy, query.sortDirection)
+
+    const [total, orders] = await this.prisma.$transaction([
+      this.prisma.order.count({ where: { userId } }),
+      this.prisma.order.findMany({
+        where: { userId },
+        orderBy: orderByField ? [orderByField] : undefined,
+        skip,
+        take: query.limit,
+        include: {
+          payment: true,
+        },
+      }),
+    ])
+
+    return {
+      meta: {
+        total,
+        page: query.page,
+        limit: query.limit,
+      },
+      data: orders.map((order) => this.mapListItem(order)),
+    }
+  }
+
+  async getOrderDetailForCustomer(userId: number | undefined, orderId: number): Promise<OrderDetailResponseDto> {
+    if (!userId) {
+      throw new BadRequestException('Authenticated user context is required to fetch order details')
+    }
+
+    const order = await this.prisma.order.findFirst({
+      where: {
+        id: orderId,
+        userId,
+      },
+      include: {
+        payment: true,
+        orderLineItems: true,
+        shipments: true,
+        invoices: true,
+      },
+    })
+
+    if (!order) {
+      throw new NotFoundException('Order not found')
+    }
+
+    return this.mapDetail(order)
+  }
+
+  private mapListItem(order: Order & { payment: { status: PaymentStatus; amount: Prisma.Decimal; currency: string } | null }): OrderListItemDto {
+    const payment = order.payment
+    const cancellability = this.evaluateCancellable(order.status)
+
     return {
       id: order.id,
       referenceId: order.referenceId,
       status: order.status,
-      paymentReference: order.paymentReference ?? '',
-      paymentGatewayTransactionId: order.paymentGatewayTransactionId ?? '',
+      createdAt: order.createdAt,
       paymentStatus: payment?.status ?? PaymentStatus.PENDING,
       amount: payment ? Number(payment.amount) : 0,
       currency: (payment?.currency ?? 'USD').toUpperCase(),
-      createdAt: order.createdAt,
+      cancellable: cancellability.cancellable,
+      cancelReason: cancellability.cancelReason,
     }
+  }
+
+  private mapDetail(order: Order & {
+    payment: { status: PaymentStatus; amount: Prisma.Decimal; currency: string } | null
+    orderLineItems: OrderLineItem[]
+    shipments: Shipment[]
+    invoices: Invoice[]
+  }): OrderDetailResponseDto {
+    const primaryPayment = order.payment
+    const lineItems = order.orderLineItems.map((item) => this.mapLineItem(item))
+    const shipments = order.shipments.map((shipment) => this.mapShipment(shipment))
+    const invoices = order.invoices.map((invoice) => this.mapInvoice(invoice))
+    const cancellability = this.evaluateCancellable(order.status)
+
+    return {
+      id: order.id,
+      referenceId: order.referenceId,
+      status: order.status,
+      createdAt: order.createdAt,
+      payment: primaryPayment ? this.mapPayment(primaryPayment) : null,
+      lineItems,
+      shipments,
+      invoices,
+      totals: {
+        amount: primaryPayment ? Number(primaryPayment.amount) : 0,
+        currency: (primaryPayment?.currency ?? 'USD').toUpperCase(),
+      },
+      cancellable: cancellability.cancellable,
+      cancelReason: cancellability.cancelReason,
+    }
+  }
+
+  private mapLineItem(item: OrderLineItem): OrderLineItemDto {
+    return {
+      id: item.id,
+      productId: item.productId,
+      sku: item.sku,
+      name: item.name,
+      quantity: item.quantity,
+      unitPrice: Number(item.unitPrice),
+      totalPrice: Number(item.totalPrice),
+      currency: item.currency,
+      metadata: item.metadata ?? null,
+    }
+  }
+
+  private mapPayment(payment: { status: PaymentStatus; amount: Prisma.Decimal; currency: string }): OrderPaymentDto {
+    return {
+      status: payment.status,
+      amount: Number(payment.amount),
+      currency: payment.currency,
+    }
+  }
+
+  private mapShipment(shipment: Shipment): OrderShipmentDto {
+    return {
+      id: shipment.id,
+      trackingNumber: shipment.trackingNumber,
+      carrier: shipment.carrier,
+      status: shipment.status,
+      estimatedDelivery: shipment.estimatedDelivery ?? null,
+    }
+  }
+
+  private mapInvoice(invoice: Invoice): OrderInvoiceDto {
+    return {
+      id: invoice.id,
+      reference: invoice.reference,
+      url: invoice.url,
+      issuedAt: invoice.issuedAt,
+    }
+  }
+
+  private evaluateCancellable(status: OrderStatus): { cancellable: boolean; cancelReason?: string } {
+    if (status === OrderStatus.CANCELLED) {
+      return { cancellable: false, cancelReason: 'Order has already been cancelled' }
+    }
+
+    if (status === OrderStatus.FULFILLED || status === OrderStatus.SHIPPED) {
+      return { cancellable: false, cancelReason: 'Order is already fulfilled' }
+    }
+
+    return { cancellable: true }
+  }
+
+  private buildOrderBy(sortBy: OrderSortField, direction: SortDirection) {
+    if (sortBy === OrderSortField.CREATED_AT) {
+      return { createdAt: direction }
+    }
+    if (sortBy === OrderSortField.AMOUNT) {
+      return { payment: { amount: direction } }
+    }
+    return null
   }
 
   private normalizeIdempotencyKey(value: string | undefined) {
