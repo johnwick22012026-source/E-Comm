@@ -203,18 +203,38 @@ model SavedPaymentPreference {
   @@index([userId, isDefault, state])
 }
 
+// === ORDER LIFECYCLE, SHIPMENT & INVOICES ===
+model OrderStatusHistory {
+  id        Int         @id @default(autoincrement())
+  orderId   Int
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    OrderStatus
+  changedAt DateTime    @default(now())
+
+  @@index([orderId])
+}
+
+model Invoice {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fileUrl   String
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+}
+
 // === EXISTING SCHEMA BELOW ===
-
 model User {
-  id              Int                      @id @default(autoincrement())
-  email           String                   @unique
-  passwordHash    String
-  emailVerified   Boolean                  @default(false)
-  emailVerifiedAt DateTime?
-  createdAt       DateTime                 @default(now())
-  updatedAt       DateTime                 @updatedAt
+  id                    Int                        @id @default(autoincrement())
+  email                 String                     @unique
+  passwordHash          String
+  emailVerified         Boolean                    @default(false)
+  emailVerifiedAt       DateTime?
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
 
-  customerProfile CustomerProfile?
+  customerProfile       CustomerProfile?
   verificationTokens    EmailVerificationToken[]
   sessions              Session[]
   passwordResetTokens   PasswordResetToken[]
@@ -223,4 +243,105 @@ model User {
   checkoutSessions      CheckoutSession[]
 }
 
-// ... rest of schema unchanged ...
+model Order {
+  id                        Int                     @id @default(autoincrement())
+  referenceId               String                  @unique
+  userId                    Int?
+  user                      User?                   @relation(fields: [userId], references: [id])
+  status                    OrderStatus
+  paymentReference          String?
+  paymentGatewayTransactionId String?
+  paymentConfirmedAt        DateTime?
+  finalizedAt               DateTime?
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+
+  cancellationReason        String?
+  cancelledAt               DateTime?
+
+  shipmentCarrier           String?
+  shipmentTrackingNumber    String?
+  shippedAt                 DateTime?
+  deliveredAt               DateTime?
+
+  statusHistory             OrderStatusHistory[]
+  invoices                  Invoice[]
+
+  @@index([userId, createdAt])
+  @@index([userId, id])
+}
+
+model EmailVerificationToken {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token      String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Session {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token      String   @unique
+  ipAddress  String?
+  userAgent  String?
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token      String   @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+model SavedCartSnapshot {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  data       Json
+  createdAt  DateTime @default(now())
+  restoredAt DateTime?
+
+  @@index([userId])
+}
+
+model CouponRedemption {
+  id         Int                  @id @default(autoincrement())
+  userId     Int
+  user       User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  couponCode String
+  status     CouponRedemptionStatus
+  appliedAt  DateTime?
+  createdAt  DateTime             @default(now())
+
+  @@index([userId])
+  @@index([couponCode])
+}
+
+model CheckoutSession {
+  id             Int                    @id @default(autoincrement())
+  userId         Int
+  user           User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionToken   String                 @unique
+  status         CheckoutSessionStatus
+  totalAmount    Decimal
+  currency       String
+  expiresAt      DateTime
+  completedAt    DateTime?
+  createdAt      DateTime               @default(now())
+
+  @@index([userId])
+}
