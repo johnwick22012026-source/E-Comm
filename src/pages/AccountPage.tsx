@@ -4,6 +4,7 @@ import ProfileSection from '../components/account/ProfileSection'
 import AddressManagerSection from '../components/account/AddressManagerSection'
 import CommunicationPreferencesSection from '../components/account/CommunicationPreferencesSection'
 import PasswordChangeSection from '../components/account/PasswordChangeSection'
+import SavedPaymentsSection from '../components/account/SavedPaymentsSection'
 
 const AccountPage = () => {
   const { user, isReady, logout, loading, error } = useAuth()
@@ -45,6 +46,7 @@ const AccountPage = () => {
             <AddressManagerSection />
             <CommunicationPreferencesSection />
             <PasswordChangeSection />
+            <SavedPaymentsSection />
           </div>
         </>
       )}
