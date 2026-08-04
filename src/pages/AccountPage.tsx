@@ -1,5 +1,9 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import ProfileSection from '../components/account/ProfileSection'
+import AddressManagerSection from '../components/account/AddressManagerSection'
+import CommunicationPreferencesSection from '../components/account/CommunicationPreferencesSection'
+import PasswordChangeSection from '../components/account/PasswordChangeSection'
 
 const AccountPage = () => {
   const { user, isReady, logout, loading, error } = useAuth()
@@ -15,7 +19,7 @@ const AccountPage = () => {
   }
 
   return (
-    <section className="card">
+    <section className="card account-card">
       <h1>Your account</h1>
       {!user ? (
         <>
@@ -32,20 +36,16 @@ const AccountPage = () => {
       ) : (
         <>
           <p className="muted">Authenticated as {user.email}</p>
-          <ul className="account-details">
-            <li>
-              <span>Status</span>
-              <strong>{user.emailVerified ? 'Email verified' : 'Email not verified'}</strong>
-            </li>
-            <li>
-              <span>User ID</span>
-              <strong>{user.id}</strong>
-            </li>
-          </ul>
           <button className="primary" onClick={handleLogout} disabled={loading}>
             {loading ? 'Signing out…' : 'Sign out'}
           </button>
-          {error && <p className="error">{error}</p>}
+          {error && <p className="status status--error">{error}</p>}
+          <div className="account-grid">
+            <ProfileSection />
+            <AddressManagerSection />
+            <CommunicationPreferencesSection />
+            <PasswordChangeSection />
+          </div>
         </>
       )}
     </section>
