@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   UnauthorizedException,
+  Logger,
 } from '@nestjs/common'
 import { CommunicationChannel, Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
@@ -15,6 +16,8 @@ import * as bcrypt from 'bcrypt'
 
 @Injectable()
 export class CustomerProfileService {
+  private readonly logger = new Logger(CustomerProfileService.name)
+
   constructor(private readonly prisma: PrismaService) {}
 
   async getProfile(userId: number) {
@@ -27,23 +30,20 @@ export class CustomerProfileService {
     })
 
     if (profile) {
+      this.logger.debug(`Loaded profile for user ${userId}`)
       return profile
     }
 
     await this.prisma.customerProfile.create({ data: { userId } })
-
     const created = await this.prisma.customerProfile.findUnique({
       where: { userId },
-      include: {
-        addresses: true,
-        preferences: true,
-      },
+      include: { addresses: true, preferences: true },
     })
 
     if (!created) {
       throw new NotFoundException('Unable to load customer profile')
     }
-
+    this.logger.debug(`Initialized profile for user ${userId}`)
     return created
   }
 
@@ -63,16 +63,17 @@ export class CustomerProfileService {
       where: { id: profile.id },
       data: updateData,
     })
-
+    this.logger.log(`User ${userId} updated profile fields: ${Object.keys(dto).join(', ')}`)
     return this.getProfile(userId)
   }
 
   async listAddresses(userId: number) {
     const profile = await this.ensureProfile(userId)
-    return this.prisma.address.findMany({
-      where: { profileId: profile.id },
-      orderBy: { updatedAt: 'desc' },
+    const addresses = await this.prisma.address.findMany({
+      where: { profileId: profile.id }, orderBy: { updatedAt: 'desc' },
     })
+    this.logger.debug(`User ${userId} fetched ${addresses.length} addresses`)
+    return addresses
   }
 
   async createAddress(userId: number, dto: CreateAddressDto) {
@@ -87,16 +88,15 @@ export class CustomerProfileService {
         })
       }
 
-      return tx.address.create({
-        data: createPayload,
-      })
+      const newAddr = await tx.address.create({ data: createPayload })
+      this.logger.log(`User ${userId} added new address id=${newAddr.id}`)
+      return newAddr
     })
   }
 
   async updateAddress(userId: number, addressId: number, dto: UpdateAddressDto) {
     const profile = await this.ensureProfile(userId)
     const existing = await this.prisma.address.findUnique({ where: { id: addressId } })
-
     if (!existing || existing.profileId !== profile.id) {
       throw new NotFoundException('Address not found')
     }
@@ -123,58 +123,43 @@ export class CustomerProfileService {
         isDefault: dto.isDefault,
       }
 
-      return tx.address.update({
-        where: { id: addressId },
-        data: updatePayload,
-      })
+      const updatedAddr = await tx.address.update({ where: { id: addressId }, data: updatePayload })
+      this.logger.log(`User ${userId} updated address id=${addressId}`)
+      return updatedAddr
     })
   }
 
   async deleteAddress(userId: number, addressId: number) {
     const profile = await this.ensureProfile(userId)
     const existing = await this.prisma.address.findUnique({ where: { id: addressId } })
-
     if (!existing || existing.profileId !== profile.id) {
       throw new NotFoundException('Address not found')
     }
-
     await this.prisma.address.delete({ where: { id: addressId } })
+    this.logger.log(`User ${userId} deleted address id=${addressId}`)
     return { deleted: true }
   }
 
   async listPreferences(userId: number) {
     const profile = await this.ensureProfile(userId)
-    return this.prisma.communicationPreference.findMany({
-      where: { profileId: profile.id },
-      orderBy: [{ channel: 'asc' }, { preference: 'asc' }],
+    const prefs = await this.prisma.communicationPreference.findMany({
+      where: { profileId: profile.id }, orderBy: [{ channel: 'asc' }, { preference: 'asc' }],
     })
+    this.logger.debug(`User ${userId} fetched ${prefs.length} communication preferences`)
+    return prefs
   }
 
   async updatePreferences(userId: number, dto: CommunicationPreferencesUpdateDto) {
     const profile = await this.ensureProfile(userId)
-    const operations = dto.preferences.map((entry) => {
-      return this.prisma.communicationPreference.upsert({
-        where: {
-          profileId_channel_preference: {
-            profileId: profile.id,
-            channel: entry.channel,
-            preference: entry.preference,
-          },
-        },
-        create: {
-          profileId: profile.id,
-          channel: entry.channel,
-          preference: entry.preference,
-          enabled: entry.enabled,
-        },
-        update: {
-          enabled: entry.enabled,
-        },
-      })
-    })
-
+    const operations = dto.preferences.map((entry) =>
+      this.prisma.communicationPreference.upsert({
+        where: { profileId_channel_preference: { profileId: profile.id, channel: entry.channel, preference: entry.preference } },
+        create: { profileId: profile.id, channel: entry.channel, preference: entry.preference, enabled: entry.enabled },
+        update: { enabled: entry.enabled },
+      }),
+    )
     await Promise.all(operations)
-
+    this.logger.log(`User ${userId} updated communication preferences: ${JSON.stringify(dto.preferences)}`)
     return this.listPreferences(userId)
   }
 
@@ -183,37 +168,27 @@ export class CustomerProfileService {
     if (!user) {
       throw new NotFoundException('User not found')
     }
-
     const validCurrent = await bcrypt.compare(dto.currentPassword, user.passwordHash)
     if (!validCurrent) {
       throw new UnauthorizedException('Current password is incorrect')
     }
-
     const newHash = await bcrypt.hash(dto.newPassword, 12)
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { passwordHash: newHash },
-    })
-
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash: newHash } })
+    this.logger.log(`User ${userId} changed their password`)
     return { message: 'Password changed successfully' }
   }
 
   private async ensureProfile(userId: number) {
     const profile = await this.prisma.customerProfile.findUnique({ where: { userId } })
-    if (profile) {
-      return profile
-    }
-
-    return this.prisma.customerProfile.create({ data: { userId } })
+    if (profile) return profile
+    const newProfile = await this.prisma.customerProfile.create({ data: { userId } })
+    this.logger.debug(`Auto-created missing profile for user ${userId}`)
+    return newProfile
   }
 
   private normalizeOptionalString(value?: string | null) {
-    if (value === undefined) {
-      return undefined
-    }
-    if (value === null) {
-      return null
-    }
+    if (value === undefined) return undefined
+    if (value === null) return null
     const trimmed = value.trim()
     return trimmed === '' ? null : trimmed
   }
