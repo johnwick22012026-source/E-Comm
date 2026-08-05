@@ -1,8 +1,9 @@
 import React from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, afterEach, afterAll } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import App from '../App'
+import * as AuthContext from '../context/AuthContext'
 
 vi.mock('../components/Layout', () => ({
   Layout: ({ children }: { children?: React.ReactNode }) => (
@@ -23,6 +24,7 @@ vi.mock('../pages/VerifyEmailPage', () => () => <div>Mock Verify Email Page</div
 vi.mock('../pages/AccountPage', () => () => <div>Mock Account Page</div>)
 vi.mock('../pages/OrderHistoryPage', () => () => <div>Mock Order History Page</div>)
 vi.mock('../pages/OrderDetailPage', () => () => <div>Mock Order Detail Page</div>)
+vi.mock('../pages/admin/OperationsPage', () => () => <div>Mock Operations Admin Page</div>)
 
 const routeExpectations = [
   { description: 'root catalog', path: '/', expectedText: /Mock Catalog Page/i },
@@ -58,5 +60,49 @@ describe('Customer-facing router regression coverage', () => {
     expect(screen.queryByText(/Mock Catalog Page/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/Mock Login Page/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/Mock Account Page/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('Admin routing protection', () => {
+  const useAuthSpy = vi.spyOn(AuthContext, 'useAuth')
+  const baseAuthContext = {
+    isSupportUser: false,
+    isAuthenticated: false,
+    user: null,
+    login: vi.fn(),
+    logout: vi.fn(),
+  }
+
+  afterEach(() => {
+    useAuthSpy.mockReset()
+  })
+
+  afterAll(() => {
+    useAuthSpy.mockRestore()
+  })
+
+  it('renders nested admin route when support users visit operations', () => {
+    useAuthSpy.mockReturnValue({ ...baseAuthContext, isSupportUser: true })
+
+    render(
+      <MemoryRouter initialEntries={['/operations']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText(/Mock Operations Admin Page/i)).toBeInTheDocument()
+  })
+
+  it('redirects non-support users away from admin routes', () => {
+    useAuthSpy.mockReturnValue({ ...baseAuthContext, isSupportUser: false })
+
+    render(
+      <MemoryRouter initialEntries={['/operations']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    expect(screen.queryByText(/Mock Operations Admin Page/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Mock Catalog Page/i)).toBeInTheDocument()
   })
 })
