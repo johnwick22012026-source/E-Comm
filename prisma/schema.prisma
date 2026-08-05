@@ -203,6 +203,41 @@ model SavedPaymentPreference {
   @@index([userId, isDefault, state])
 }
 
+// === EMAIL NOTIFICATION AUDIT & METADATA ===
+enum EmailNotificationType {
+  VERIFICATION_EMAIL
+  PASSWORD_RESET_EMAIL
+}
+
+enum EmailNotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+}
+
+model EmailNotification {
+  id                Int                      @id @default(autoincrement())
+  recipient         String                   // recipient email address
+  type              EmailNotificationType    // notification category
+  userId            Int?                     // linked account, if applicable
+  user              User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  orderId           Int?                     // linked order, if applicable
+  order             Order?                   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  providerMessageId String?                  // message ID from email provider
+  status            EmailNotificationStatus  @default(PENDING)  // delivery status
+  sentAt            DateTime?                // when email was sent
+  deliveredAt       DateTime?                // when delivery was confirmed
+  error             String?                  // error or retry details
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  @@index([recipient])
+  @@index([userId])
+  @@index([orderId])
+  @@index([status])
+}
+
 // === ORDER LIFECYCLE, SHIPMENT & INVOICES ===
 model OrderStatusHistory {
   id        Int         @id @default(autoincrement())
@@ -311,11 +346,15 @@ model SavedCartSnapshot {
   id         Int      @id @default(autoincrement())
   userId     Int
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  data       Json
-  createdAt  DateTime @default(now())
-  restoredAt DateTime?
+  sessionToken   String? @unique
+  status         SavedCartRestoreStatus @default(PENDING)
+  restoredAt     DateTime?
+  metadata        Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([userId])
+  @@index([userId, status, createdAt])
 }
 
 model CouponRedemption {
