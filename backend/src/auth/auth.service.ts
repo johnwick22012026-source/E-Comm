@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { RegisterDto } from './dto/register.dto'
 import { LoginDto } from './dto/login.dto'
 import { NotificationService } from '../notifications/notification.service'
+import { NotificationEventLogService } from '../notifications/notification-event-log.service'
 import * as bcrypt from 'bcrypt'
 import { randomBytes, createHash } from 'crypto'
 import { Response } from 'express'
@@ -27,6 +28,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly notificationService: NotificationService,
+    private readonly notificationEventLogService: NotificationEventLogService,
     private readonly config: ConfigService,
   ) {
     const envValue = this.config.get<string>('SESSION_DURATION_MS')
@@ -70,7 +72,11 @@ export class AuthService {
       },
     })
 
-    await this.notificationService.sendVerificationEmail(user.email, verificationToken)
+    const eventId = `account_verification:${verificationToken}`
+    const shouldSend = await this.notificationEventLogService.recordEventIfNew(eventId, 'account:verification_requested')
+    if (shouldSend) {
+      await this.notificationService.sendVerificationEmail(user.email, verificationToken)
+    }
 
     return { message: 'Registration successful. Please verify your email.' }
   }
@@ -103,6 +109,20 @@ export class AuthService {
         data: { emailVerified: true, emailVerifiedAt: new Date() },
       }),
     ])
+
+    const eventId = `account_registration:${verification.userId}`
+    const sent = await this.notificationEventLogService.recordEventIfNew(eventId, 'account:registration_completed')
+    if (sent) {
+      await this.notificationService.sendOrderConfirmationEmail({
+        email: verification.user.email,
+        orderNumber: 'welcome',
+        orderDate: new Date().toISOString(),
+        items: [],
+        subtotal: '$0.00',
+        shippingCost: '$0.00',
+        total: '$0.00',
+      })
+    }
 
     return { message: 'Email verified successfully' }
   }
@@ -207,7 +227,11 @@ export class AuthService {
       },
     })
 
-    await this.notificationService.sendPasswordResetEmail(user.email, token)
+    const eventId = `password_reset:${tokenHash}`
+    const shouldSend = await this.notificationEventLogService.recordEventIfNew(eventId, 'account:password_reset_requested')
+    if (shouldSend) {
+      await this.notificationService.sendPasswordResetEmail(user.email, token)
+    }
   }
 
   async validatePasswordResetToken(token: string) {
