@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react'
-import { useRouter } from 'next/router'
+import { useNavigate } from 'react-router-dom'
 import { API_BASE, parseApiError } from '../../../lib/api'
 
 interface PromotionOption { id: number; name: string }
 
 const NewCouponPage: React.FC = () => {
-  const router = useRouter()
+  const navigate = useNavigate()
   const [code, setCode] = useState('')
   const [discountType, setDiscountType] = useState('PERCENTAGE')
   const [discountValue, setDiscountValue] = useState('0')
@@ -19,6 +19,7 @@ const NewCouponPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [initLoading, setInitLoading] = useState(true)
+  const [initError, setInitError] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchPromotions = async () => {
@@ -27,8 +28,8 @@ const NewCouponPage: React.FC = () => {
         if (!res.ok) throw new Error(await parseApiError(res, 'Failed to load promotions'))
         const data = await res.json()
         setPromotions(data.items)
-      } catch (e) {
-        // ignore
+      } catch (e: any) {
+        setInitError(e.message)
       } finally {
         setInitLoading(false)
       }
@@ -60,7 +61,7 @@ const NewCouponPage: React.FC = () => {
       if (!res.ok) {
         throw new Error(await parseApiError(res, 'Creation failed'))
       }
-      router.push('/admin/coupons')
+      navigate('/admin/coupons')
     } catch (e: any) {
       setError(e.message)
     } finally {
@@ -69,6 +70,7 @@ const NewCouponPage: React.FC = () => {
   }
 
   if (initLoading) return <p>Loading...</p>
+  if (initError) return <p style={{ color: 'red' }}>Failed to load promotions: {initError}</p>
 
   return (
     <div>
@@ -173,7 +175,7 @@ const NewCouponPage: React.FC = () => {
           <button type="submit" disabled={loading}>
             {loading ? 'Saving...' : 'Save'}
           </button>{' '}
-          <button type="button" onClick={() => router.back()} disabled={loading}>
+          <button type="button" onClick={() => navigate(-1)} disabled={loading}>
             Cancel
           </button>
         </div>
