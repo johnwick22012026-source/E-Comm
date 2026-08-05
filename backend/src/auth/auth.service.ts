@@ -160,6 +160,8 @@ export class AuthService {
         id: user.id,
         email: user.email,
         emailVerified: user.emailVerified,
+        role: user.role,
+        isAdmin: user.role === 'ADMIN',
       },
       token,
       session,
@@ -235,8 +237,7 @@ export class AuthService {
   }
 
   async validatePasswordResetToken(token: string) {
-    const resetToken = await this.getValidResetToken(token)
-    await this.recordResetTokenAttempt(resetToken)
+    await this.getValidResetToken(token)
   }
 
   async resetPassword(token: string, password: string) {
@@ -263,7 +264,7 @@ export class AuthService {
     return createHash('sha256').update(token).digest('hex')
   }
 
-  private async getValidResetToken(token: string) {
+  private async getValidResetToken(token: string): Promise<PasswordResetToken> {
     const tokenHash = this.hashResetToken(token)
     const resetToken = await this.prisma.passwordResetToken.findUnique({
       where: { tokenHash },
@@ -287,15 +288,5 @@ export class AuthService {
     }
 
     return resetToken
-  }
-
-  private async recordResetTokenAttempt(resetToken: PasswordResetToken) {
-    await this.prisma.passwordResetToken.update({
-      where: { id: resetToken.id },
-      data: {
-        attemptedAt: new Date(),
-        attempts: (resetToken.attempts ?? 0) + 1,
-      },
-    })
   }
 }
