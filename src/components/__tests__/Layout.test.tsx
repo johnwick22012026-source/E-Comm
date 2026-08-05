@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach, afterAll } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { Layout } from '../Layout'
 import * as AuthContext from '../../context/AuthContext'
 
@@ -38,5 +38,22 @@ describe('Layout', () => {
     )
 
     expect(screen.queryByRole('link', { name: /operations/i })).not.toBeInTheDocument()
+  })
+
+  it('renders nested routes within the shared layout shell', () => {
+    useAuthSpy.mockReturnValue({ isSupportUser: true })
+
+    render(
+      <MemoryRouter initialEntries={['/nested']}>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route path="nested" element={<div>Nested content</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText(/Nested content/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /operations/i })).toBeInTheDocument()
   })
 })
