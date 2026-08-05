@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 import React from 'react'
@@ -13,7 +13,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {/* ...other navigation items... */}
         {isSupportUser && (
           <nav>
-            <Link href="/admin/operations">Operations</Link>
+            <Link to="/admin/operations">Operations</Link>
           </nav>
         )}
       </header>
