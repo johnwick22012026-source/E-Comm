@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import Link from 'next/link'
+import { Link } from 'react-router-dom'
 import { Layout } from '../../../../components/Layout'
 import { API_BASE, parseApiError } from '../../../../lib/api'
 
@@ -61,7 +61,7 @@ export default function CustomersPage() {
             {customers.map((c) => (
               <tr key={c.id}>
                 <td>
-                  <Link href={`/admin/operations/customers/${c.id}`}>{c.id}</Link>
+                  <Link to={`/admin/operations/customers/${c.id}`}>{c.id}</Link>
                 </td>
                 <td>{c.email}</td>
                 <td>{c.emailVerified ? 'Yes' : 'No'}</td>
