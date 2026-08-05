@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext'
 
 import React from 'react'
 
-export default function Layout() {
+export function Layout() {
   const { isSupportUser } = useAuth()
 
   return (
