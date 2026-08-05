@@ -1,9 +1,9 @@
 import React, { useState } from 'react'
-import { useRouter } from 'next/router'
+import { useNavigate } from 'react-router-dom'
 import { API_BASE, parseApiError } from '../../../../lib/api'
 
 const NewCategoryPage: React.FC = () => {
-  const router = useRouter()
+  const navigate = useNavigate()
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [parentId, setParentId] = useState<string>('')
@@ -25,7 +25,7 @@ const NewCategoryPage: React.FC = () => {
       if (!res.ok) {
         throw new Error(await parseApiError(res, 'Creation failed'))
       }
-      router.push('/admin/catalog/categories')
+      navigate('/admin/catalog/categories')
     } catch (e: any) {
       setError(e.message)
     } finally {
@@ -65,7 +65,7 @@ const NewCategoryPage: React.FC = () => {
           <button type="submit" disabled={loading}>
             {loading ? 'Saving...' : 'Save'}
           </button>{' '}
-          <button type="button" onClick={() => router.back()} disabled={loading}>
+          <button type="button" onClick={() => navigate(-1)} disabled={loading}>
             Cancel
           </button>
         </div>
