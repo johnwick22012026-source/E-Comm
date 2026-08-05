@@ -1,4 +1,5 @@
 import React from 'react'
+import { Link } from 'react-router-dom'
 import { Layout } from 'src/components/Layout'
 
 export default function OperationsPage() {
@@ -14,7 +15,7 @@ export default function OperationsPage() {
         <li>Orders (coming soon)</li>
         <li>Customers (coming soon)</li>
         <li>
-          <a href="/admin/reporting">Reporting</a>
+          <Link to="/admin/reporting">Reporting</Link>
         </li>
       </ul>
     </Layout>
