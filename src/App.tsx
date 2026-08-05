@@ -17,7 +17,7 @@ import OrderDetailPage from './pages/OrderDetailPage'
 function App() {
   return (
     <Routes>
-      <Route path="/" element={<Layout />}>        
+      <Route element={<Layout />}>
         <Route index element={<CatalogPage />} />
         <Route path="catalog" element={<CatalogPage />} />
         <Route path="catalog/:id" element={<ProductDetailPage />} />
