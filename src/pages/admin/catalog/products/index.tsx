@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { useRouter } from 'next/router'
+import { useNavigate } from 'react-router-dom'
 import { API_BASE, parseApiError } from '../../../../lib/api'
 
 interface Product {
@@ -12,7 +12,7 @@ interface Product {
 }
 
 const ProductsPage: React.FC = () => {
-  const router = useRouter()
+  const navigate = useNavigate()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -54,7 +54,7 @@ const ProductsPage: React.FC = () => {
   return (
     <div>
       <h1>Products</h1>
-      <button onClick={() => router.push('/admin/catalog/products/new')}>New Product</button>
+      <button onClick={() => navigate('/admin/catalog/products/new')}>New Product</button>
       {loading && <p>Loading...</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
       {!loading && !error && (
@@ -84,7 +84,7 @@ const ProductsPage: React.FC = () => {
                     <td>{p.isActive ? 'Yes' : 'No'}</td>
                     <td>{p.isAvailable ? 'Yes' : 'No'}</td>
                     <td>
-                      <button onClick={() => router.push(`/admin/catalog/products/${p.id}`)}>
+                      <button onClick={() => navigate(`/admin/catalog/products/${p.id}`)}>
                         Edit
                       </button>{' '}
                       <button onClick={() => handleDelete(p.id)}>Delete</button>
