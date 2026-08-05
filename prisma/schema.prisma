@@ -75,7 +75,7 @@ enum OrderStatus {
 
 model Payment {
   id               Int          @id @default(autoincrement())
-  orderId          Int
+  orderId          Int          @unique
   cartId           Int?
   userId           Int?
   status           PaymentStatus
@@ -204,4 +204,80 @@ model ProductImage {
   metadata   Json?
   createdAt  DateTime @default(now())
   product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+/// =====================
+/// Coupons & Promotions schema
+/// =====================
+enum CouponDiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+enum CouponStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum TargetType {
+  PRODUCT
+  CATEGORY
+}
+
+model Promotion {
+  id                Int                 @id @default(autoincrement())
+  name              String
+  description       String?
+  discountType      CouponDiscountType
+  discountValue     Decimal
+  minPurchaseAmount Decimal?            @default(0)
+  usageLimit        Int?
+  usageCount        Int                 @default(0)
+  startsAt          DateTime?
+  expiresAt         DateTime?
+  isActive          Boolean             @default(true)
+  metadata          Json?
+  coupons           Coupon[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([isActive])
+  @@index([startsAt])
+  @@index([expiresAt])
+}
+
+model Coupon {
+  id                Int                 @id @default(autoincrement())
+  code              String              @unique
+  description       String?
+  discountType      CouponDiscountType
+  discountValue     Decimal
+  minPurchaseAmount Decimal?            @default(0)
+  usageLimit        Int?
+  usageCount        Int                 @default(0)
+  startsAt          DateTime?
+  expiresAt         DateTime?
+  isActive          Boolean             @default(true)
+  metadata          Json?
+  promotionId       Int?
+  promotion         Promotion?          @relation(fields: [promotionId], references: [id])
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+  @@index([startsAt])
+  @@index([expiresAt])
+}
+
+model PromotionTarget {
+  id          Int        @id @default(autoincrement())
+  promotionId Int
+  targetType  TargetType
+  targetId    Int
+  createdAt   DateTime   @default(now())
+  promotion   Promotion  @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+
+  @@index([promotionId])
+  @@index([targetType, targetId])
 }
