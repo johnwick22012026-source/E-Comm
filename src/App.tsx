@@ -16,7 +16,10 @@ import OrderHistoryPage from './pages/OrderHistoryPage'
 import OrderDetailPage from './pages/OrderDetailPage'
 import OperationsPage from './pages/admin/operations'
 import CatalogCategoriesPage from './pages/admin/catalog/categories'
+import CatalogProductsPage from './pages/admin/catalog/products'
+import CouponsPage from './pages/admin/coupons'
 import PromotionsPage from './pages/admin/promotions'
+import ReportingPage from './pages/admin/reporting'
 
 function App() {
   return (
@@ -39,8 +42,14 @@ function App() {
         <Route path="admin" element={<AdminGuard />}>
           <Route index element={<Navigate to="catalog/categories" replace />} />
           <Route path="operations" element={<OperationsPage />} />
-          <Route path="catalog/categories" element={<CatalogCategoriesPage />} />
-          <Route path="promotions" element={<PromotionsPage />} />
+          <Route path="catalog">
+            <Route index element={<Navigate to="categories" replace />} />
+            <Route path="categories/*" element={<CatalogCategoriesPage />} />
+            <Route path="products/*" element={<CatalogProductsPage />} />
+          </Route>
+          <Route path="coupons/*" element={<CouponsPage />} />
+          <Route path="promotions/*" element={<PromotionsPage />} />
+          <Route path="reporting/*" element={<ReportingPage />} />
         </Route>
       </Route>
     </Routes>
