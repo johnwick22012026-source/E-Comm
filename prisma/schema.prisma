@@ -281,3 +281,52 @@ model PromotionTarget {
   @@index([promotionId])
   @@index([targetType, targetId])
 }
+
+/// =====================
+/// Reporting aggregation views for dashboards
+/// =====================
+
+model DailySalesSummary {
+  date         DateTime @db.Date
+  totalRevenue Decimal  @map("total_revenue")
+  orderCount   Int      @map("order_count")
+
+  @@map("daily_sales_summary")
+  @@id([date])
+  @@ignore
+}
+
+model DailyCustomerGrowth {
+  date         DateTime @db.Date
+  newCustomers Int      @map("new_customers")
+
+  @@map("daily_customer_growth")
+  @@id([date])
+  @@ignore
+}
+
+model DailyProductSales {
+  date         DateTime @db.Date
+  productId    Int      @map("product_id")
+  productName  String?  @map("product_name")
+  quantitySold Int      @map("quantity_sold")
+  revenue      Decimal
+
+  @@map("daily_product_sales")
+  @@id([date, productId])
+  @@index([date])
+  @@index([productId], name: "idx_daily_product_sales_product")
+  @@ignore
+}
+
+model CurrentInventoryLevels {
+  productId         Int      @map("product_id")
+  stockQuantity     Int      @map("stock_quantity")
+  availableQuantity Int      @map("available_quantity")
+  reservedQuantity  Int      @map("reserved_quantity")
+  asOf              DateTime @map("as_of")
+
+  @@map("current_inventory_levels")
+  @@id([productId])
+  @@ignore
+}
