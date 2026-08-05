@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
-import { Layout } from '../../../../components/Layout'
+import { Layout } from 'src/components/Layout'
 import { API_BASE, parseApiError } from '../../../../lib/api'
 
 interface CustomerDetail {
