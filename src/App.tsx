@@ -1,39 +1,40 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider } from './context/AuthContext'
+import { Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout'
-import RegisterPage from './pages/RegisterPage'
-import LoginPage from './pages/LoginPage'
-import VerifyEmailPage from './pages/VerifyEmailPage'
-import AccountPage from './pages/AccountPage'
-import RequestPasswordResetPage from './pages/RequestPasswordResetPage'
-import SetNewPasswordPage from './pages/SetNewPasswordPage'
 import CatalogPage from './pages/CatalogPage'
 import ProductDetailPage from './pages/ProductDetailPage'
 import CartPage from './pages/CartPage'
 import CheckoutPage from './pages/CheckoutPage'
 import OrderConfirmationPage from './pages/OrderConfirmationPage'
+import LoginPage from './pages/LoginPage'
+import RegisterPage from './pages/RegisterPage'
+import RequestPasswordResetPage from './pages/RequestPasswordResetPage'
+import SetNewPasswordPage from './pages/SetNewPasswordPage'
+import VerifyEmailPage from './pages/VerifyEmailPage'
+import AccountPage from './pages/AccountPage'
+import OrderHistoryPage from './pages/OrderHistoryPage'
+import OrderDetailPage from './pages/OrderDetailPage'
 
-export default function App() {
+function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <Routes>
-          <Route element={<Layout />}>
-            <Route index element={<AccountPage />} />
-            <Route path="register" element={<RegisterPage />} />
-            <Route path="login" element={<LoginPage />} />
-            <Route path="verify-email" element={<VerifyEmailPage />} />
-            <Route path="password-reset/request" element={<RequestPasswordResetPage />} />
-            <Route path="password-reset/set" element={<SetNewPasswordPage />} />
-            <Route path="catalog" element={<CatalogPage />} />
-            <Route path="products/:productId" element={<ProductDetailPage />} />
-            <Route path="cart" element={<CartPage />} />
-            <Route path="checkout" element={<CheckoutPage />} />
-            <Route path="orders/:orderReference" element={<OrderConfirmationPage />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </AuthProvider>
-    </BrowserRouter>
+    <Routes>
+      <Route path="/" element={<Layout />}>        
+        <Route index element={<CatalogPage />} />
+        <Route path="catalog" element={<CatalogPage />} />
+        <Route path="catalog/:id" element={<ProductDetailPage />} />
+        <Route path="cart" element={<CartPage />} />
+        <Route path="checkout" element={<CheckoutPage />} />
+        <Route path="confirmation/:orderReference" element={<OrderConfirmationPage />} />
+        <Route path="login" element={<LoginPage />} />
+        <Route path="register" element={<RegisterPage />} />
+        <Route path="request-password" element={<RequestPasswordResetPage />} />
+        <Route path="set-password" element={<SetNewPasswordPage />} />
+        <Route path="verify-email" element={<VerifyEmailPage />} />
+        <Route path="account" element={<AccountPage />} />
+        <Route path="account/orders" element={<OrderHistoryPage />} />
+        <Route path="account/orders/:orderId" element={<OrderDetailPage />} />
+      </Route>
+    </Routes>
   )
 }
+
+export default App
