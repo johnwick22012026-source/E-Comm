@@ -15,7 +15,7 @@ describe('App wiring with the shared Layout', () => {
     useAuthSpy.mockRestore()
   })
 
-  it('renders the shared layout and nested routes without import issues', () => {
+  it('boots the shared layout shell with nested content from App', () => {
     useAuthSpy.mockReturnValue({ isSupportUser: true })
 
     render(
@@ -25,5 +25,6 @@ describe('App wiring with the shared Layout', () => {
     )
 
     expect(screen.getByRole('link', { name: /operations/i })).toBeInTheDocument()
+    expect(screen.getByText(/catalog/i)).toBeInTheDocument()
   })
 })
