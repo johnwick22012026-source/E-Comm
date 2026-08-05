@@ -33,17 +33,25 @@ export class AdminCatalogService {
       await this.ensureCategoryExists(dto.parentId)
     }
 
+    if (dto.parentId && dto.parentId === id) {
+      throw new BadRequestException('Category cannot be its own parent.')
+    }
+
     if (dto.slug) {
       await this.ensureCategorySlugAvailable(dto.slug, id)
     }
 
+    const now = new Date()
+    const updatePayload = {
+      name: dto.name,
+      slug: dto.slug,
+      parentId: dto.parentId ?? undefined,
+      updatedAt: now,
+    } as Prisma.CategoryUpdateInput
+
     return this.prisma.category.update({
       where: { id },
-      data: {
-        name: dto.name,
-        slug: dto.slug,
-        parentId: dto.parentId ?? undefined,
-      },
+      data: updatePayload,
     })
   }
 
@@ -66,7 +74,7 @@ export class AdminCatalogService {
     }
 
     if (category.productCategory.length || category.productSubcategory.length) {
-      throw new BadRequestException('Cannot delete a category that is assigned to products.')
+      throw new BadRequestException('Cannot delete a category that is assigned to products. Reassign or remove products first to keep catalog state consistent.')
     }
 
     await this.prisma.category.delete({ where: { id } })
@@ -85,6 +93,10 @@ export class AdminCatalogService {
       await this.ensureCategoryExists(dto.subcategoryId)
     }
 
+    const inventory = this.normalizeInventoryForCreate(dto)
+    const isActive = dto.isActive ?? true
+    const isAvailable = this.resolveAvailability(isActive, dto.isAvailable)
+
     return this.prisma.product.create({
       data: {
         name: dto.name,
@@ -99,12 +111,12 @@ export class AdminCatalogService {
         saleEndsAt: dto.saleEndsAt ? new Date(dto.saleEndsAt) : null,
         categoryId: dto.categoryId ?? null,
         subcategoryId: dto.subcategoryId ?? null,
-        stockQuantity: dto.stockQuantity ?? 0,
-        availableQuantity: dto.availableQuantity ?? dto.stockQuantity ?? 0,
-        reservedQuantity: dto.reservedQuantity ?? 0,
+        stockQuantity: inventory.stockQuantity,
+        availableQuantity: inventory.availableQuantity,
+        reservedQuantity: inventory.reservedQuantity,
         inventoryStatus: dto.inventoryStatus,
-        isAvailable: dto.isAvailable ?? true,
-        isActive: dto.isActive ?? true,
+        isAvailable,
+        isActive,
       },
     })
   }
@@ -122,56 +134,88 @@ export class AdminCatalogService {
       await this.ensureProductSlugAvailable(dto.slug, id)
     }
 
+    const now = new Date()
+    const updatePayload: Prisma.ProductUpdateInput = {
+      name: dto.name,
+      slug: dto.slug,
+      description: dto.description,
+      brand: dto.brand,
+      price: dto.price,
+      currency: dto.currency,
+      listPrice: dto.listPrice,
+      salePrice: dto.salePrice,
+      saleStartsAt: dto.saleStartsAt ? new Date(dto.saleStartsAt) : undefined,
+      saleEndsAt: dto.saleEndsAt ? new Date(dto.saleEndsAt) : undefined,
+      isAvailable: dto.isAvailable,
+      isActive: dto.isActive,
+      updatedAt: now,
+    }
+
+    if ('categoryId' in dto) {
+      updatePayload.categoryId = dto.categoryId
+    }
+
+    if ('subcategoryId' in dto) {
+      updatePayload.subcategoryId = dto.subcategoryId
+    }
+
+    if (dto.isActive === false && dto.isAvailable === undefined) {
+      updatePayload.isAvailable = false
+    }
+
     return this.prisma.product.update({
       where: { id },
-      data: {
-        name: dto.name,
-        slug: dto.slug,
-        description: dto.description,
-        brand: dto.brand,
-        price: dto.price,
-        currency: dto.currency,
-        listPrice: dto.listPrice,
-        salePrice: dto.salePrice,
-        saleStartsAt: dto.saleStartsAt ? new Date(dto.saleStartsAt) : undefined,
-        saleEndsAt: dto.saleEndsAt ? new Date(dto.saleEndsAt) : undefined,
-        categoryId: dto.categoryId ?? undefined,
-        subcategoryId: dto.subcategoryId ?? undefined,
-        isAvailable: dto.isAvailable,
-        isActive: dto.isActive,
-      },
+      data: updatePayload,
     })
   }
 
   async updateInventory(id: number, dto: UpdateProductInventoryDto) {
     await this.ensureProductExists(id)
 
+    this.ensureInventoryConsistency({
+      stock: dto.stockQuantity,
+      available: dto.availableQuantity,
+      reserved: dto.reservedQuantity,
+    })
+
+    const now = new Date()
+    const updatePayload = {
+      stockQuantity: dto.stockQuantity,
+      availableQuantity: dto.availableQuantity,
+      reservedQuantity: dto.reservedQuantity,
+      inventoryStatus: dto.inventoryStatus,
+      isAvailable: dto.isAvailable,
+      isActive: dto.isActive,
+      updatedAt: now,
+    } as Prisma.ProductUpdateInput
+
+    if (dto.isActive === false && dto.isAvailable === undefined) {
+      updatePayload.isAvailable = false
+    }
+
     return this.prisma.product.update({
       where: { id },
-      data: {
-        stockQuantity: dto.stockQuantity,
-        availableQuantity: dto.availableQuantity,
-        reservedQuantity: dto.reservedQuantity,
-        inventoryStatus: dto.inventoryStatus,
-        isAvailable: dto.isAvailable,
-        isActive: dto.isActive,
-      },
+      data: updatePayload,
     })
   }
 
   async softDeleteProduct(id: number) {
     await this.ensureProductExists(id)
 
+    const now = new Date()
+    const updatePayload = {
+      isActive: false,
+      isAvailable: false,
+      stockQuantity: 0,
+      availableQuantity: 0,
+      reservedQuantity: 0,
+      inventoryStatus: 'DELETED',
+      updatedAt: now,
+    } as Prisma.ProductUpdateInput
+
     return this.prisma.product.update({
       where: { id },
-      data: {
-        isActive: false,
-        isAvailable: false,
-        stockQuantity: 0,
-        availableQuantity: 0,
-        reservedQuantity: 0,
-        inventoryStatus: 'DELETED',
-      },
+      data: updatePayload,
     })
   }
 
@@ -263,5 +307,54 @@ export class AdminCatalogService {
     if (conflict) {
       throw new ConflictException(`Product slug "${slug}" is already in use.`)
     }
+  }
+
+  private normalizeInventoryForCreate(dto: CreateProductDto) {
+    const stockQuantity = dto.stockQuantity ?? 0
+    const reservedQuantity = dto.reservedQuantity ?? 0
+    const availableQuantity = dto.availableQuantity ?? Math.max(stockQuantity - reservedQuantity, 0)
+
+    this.ensureInventoryConsistency({ stock: stockQuantity, available: availableQuantity, reserved: reservedQuantity })
+
+    return {
+      stockQuantity,
+      availableQuantity,
+      reservedQuantity,
+    }
+  }
+
+  private ensureInventoryConsistency(payload: { stock?: number; available?: number; reserved?: number }) {
+    const { stock, available, reserved } = payload
+
+    if (typeof stock === 'number' && stock < 0) {
+      throw new BadRequestException('Stock quantity cannot be negative.')
+    }
+
+    if (typeof available === 'number' && available < 0) {
+      throw new BadRequestException('Available quantity cannot be negative.')
+    }
+
+    if (typeof reserved === 'number' && reserved < 0) {
+      throw new BadRequestException('Reserved quantity cannot be negative.')
+    }
+
+    if (stock !== undefined && reserved !== undefined && reserved > stock) {
+      throw new BadRequestException('Reserved quantity cannot exceed total stock quantity.')
+    }
+
+    if (stock !== undefined && available !== undefined && available > stock) {
+      throw new BadRequestException('Available quantity cannot exceed total stock quantity.')
+    }
+
+    if (stock !== undefined && available !== undefined && reserved !== undefined && available + reserved > stock) {
+      throw new BadRequestException('Sum of available and reserved quantities cannot exceed total stock quantity.')
+    }
+  }
+
+  private resolveAvailability(isActive?: boolean, preferred?: boolean) {
+    if (isActive === false) {
+      return false
+    }
+    return preferred ?? true
   }
 }
