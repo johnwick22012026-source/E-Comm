@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import Link from 'next/link'
+import { Link } from 'react-router-dom'
 import { Layout } from '../../../../components/Layout'
 import { API_BASE, parseApiError } from '../../../../lib/api'
 
@@ -63,7 +63,7 @@ export default function OrdersPage() {
             {orders.map((order) => (
               <tr key={order.id}>
                 <td>
-                  <Link href={`/admin/operations/orders/${order.id}`}>{order.id}</Link>
+                  <Link to={`/admin/operations/orders/${order.id}`}>{order.id}</Link>
                 </td>
                 <td>{new Date(order.createdAt).toLocaleString()}</td>
                 <td>{order.status}</td>
