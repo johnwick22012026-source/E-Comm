@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Layout } from '../../../components/Layout'
+import { Layout } from 'src/components/Layout'
 import { API_BASE, parseApiError } from '../../../lib/api'
 
 enum Granularity {
