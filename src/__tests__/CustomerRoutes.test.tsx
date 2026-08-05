@@ -25,6 +25,8 @@ vi.mock('../pages/AccountPage', () => () => <div>Mock Account Page</div>)
 vi.mock('../pages/OrderHistoryPage', () => () => <div>Mock Order History Page</div>)
 vi.mock('../pages/OrderDetailPage', () => () => <div>Mock Order Detail Page</div>)
 vi.mock('../pages/admin/OperationsPage', () => () => <div>Mock Operations Admin Page</div>)
+vi.mock('../pages/admin/catalog/categories', () => () => <div>Mock Catalog Admin Categories Page</div>)
+vi.mock('../pages/admin/promotions', () => () => <div>Mock Promotions Admin Page</div>)
 
 const routeExpectations = [
   { description: 'root catalog', path: '/', expectedText: /Mock Catalog Page/i },
@@ -103,6 +105,56 @@ describe('Admin routing protection', () => {
     )
 
     expect(screen.queryByText(/Mock Operations Admin Page/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Mock Catalog Page/i)).toBeInTheDocument()
+  })
+
+  it('renders nested promotions admin route when support users visit promotions', () => {
+    useAuthSpy.mockReturnValue({ ...baseAuthContext, isSupportUser: true })
+
+    render(
+      <MemoryRouter initialEntries={['/admin/promotions']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText(/Mock Promotions Admin Page/i)).toBeInTheDocument()
+  })
+
+  it('redirects non-support users away from admin promotions route', () => {
+    useAuthSpy.mockReturnValue({ ...baseAuthContext, isSupportUser: false })
+
+    render(
+      <MemoryRouter initialEntries={['/admin/promotions']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    expect(screen.queryByText(/Mock Promotions Admin Page/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Mock Catalog Page/i)).toBeInTheDocument()
+  })
+
+  it('renders nested catalog categories admin route when support users visit catalog categories', () => {
+    useAuthSpy.mockReturnValue({ ...baseAuthContext, isSupportUser: true })
+
+    render(
+      <MemoryRouter initialEntries={['/admin/catalog/categories']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText(/Mock Catalog Admin Categories Page/i)).toBeInTheDocument()
+  })
+
+  it('redirects non-support users away from admin catalog categories route', () => {
+    useAuthSpy.mockReturnValue({ ...baseAuthContext, isSupportUser: false })
+
+    render(
+      <MemoryRouter initialEntries={['/admin/catalog/categories']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    expect(screen.queryByText(/Mock Catalog Admin Categories Page/i)).not.toBeInTheDocument()
     expect(screen.getByText(/Mock Catalog Page/i)).toBeInTheDocument()
   })
 })
