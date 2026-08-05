@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { useRouter } from 'next/router'
+import { useNavigate } from 'react-router-dom'
 import { API_BASE, parseApiError } from '../../../lib/api'
 
 interface Coupon {
@@ -23,7 +23,7 @@ interface ListResponse {
 const COUPONS_PER_PAGE = 25
 
 const CouponsPage: React.FC = () => {
-  const router = useRouter()
+  const navigate = useNavigate()
   const [coupons, setCoupons] = useState<Coupon[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -97,7 +97,7 @@ const CouponsPage: React.FC = () => {
   return (
     <div>
       <h1>Coupons</h1>
-      <button onClick={() => router.push('/admin/coupons/new')}>New Coupon</button>
+      <button onClick={() => navigate('/admin/coupons/new')}>New Coupon</button>
       <form onSubmit={handleFilter} style={{ marginTop: '1rem' }}>
         <input
           placeholder="Search by code"
@@ -155,7 +155,7 @@ const CouponsPage: React.FC = () => {
                     <td>{c.startsAt ? new Date(c.startsAt).toLocaleString() : '-'}</td>
                     <td>{c.expiresAt ? new Date(c.expiresAt).toLocaleString() : '-'}</td>
                     <td>
-                      <button onClick={() => router.push(`/admin/coupons/${c.id}`)}>Edit</button>{' '}
+                      <button onClick={() => navigate(`/admin/coupons/${c.id}`)}>Edit</button>{' '}
                       <button onClick={() => toggleStatus(c.id, c.isActive)}>
                         {c.isActive ? 'Deactivate' : 'Activate'}
                       </button>
