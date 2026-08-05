@@ -8,15 +8,15 @@ datasource db {
 }
 
 model User {
-  id                    Int                        @id @default(autoincrement())
-  email                 String                     @unique
-  passwordHash          String
-  emailVerified         Boolean                    @default(false)
-  emailVerifiedAt       DateTime?
-  sessions              Session[]
-  carts                 Cart[]
-  orders                Order[]
-  savedPaymentPrefs     SavedPaymentPreference[]
+  id                      Int                        @id @default(autoincrement())
+  email                   String                     @unique
+  passwordHash            String
+  emailVerified           Boolean                    @default(false)
+  emailVerifiedAt         DateTime?
+  sessions                Session[]
+  carts                   Cart[]
+  orders                  Order[]
+  savedPaymentPrefs       SavedPaymentPreference[]
   emailVerificationTokens EmailVerificationToken[]
   passwordResetTokens     PasswordResetToken[]
 }
@@ -40,19 +40,19 @@ model Cart {
 }
 
 model Order {
-  id                         Int       @id @default(autoincrement())
-  referenceId                String    @unique
-  userId                     Int?
-  status                     OrderStatus
-  paymentReference           String?
+  id                          Int       @id @default(autoincrement())
+  referenceId                 String    @unique
+  userId                      Int?
+  status                      OrderStatus
+  paymentReference            String?
   paymentGatewayTransactionId String?
-  paymentConfirmedAt         DateTime?
-  finalizedAt                DateTime?
-  createdAt                  DateTime  @default(now())
-  payment                    Payment?
-  orderLineItems             OrderLineItem[]
-  shipments                  Shipment[]
-  invoices                   Invoice[]
+  paymentConfirmedAt          DateTime?
+  finalizedAt                 DateTime?
+  createdAt                   DateTime  @default(now())
+  payment                     Payment?
+  orderLineItems              OrderLineItem[]
+  shipments                   Shipment[]
+  invoices                    Invoice[]
 }
 
 enum OrderStatus {
@@ -64,17 +64,17 @@ enum OrderStatus {
 }
 
 model Payment {
-  id                            Int       @id @default(autoincrement())
-  orderId                       Int
-  cartId                        Int?
-  userId                        Int?
-  status                        PaymentStatus
-  amount                        Decimal
-  currency                      String
-  gatewayReference              String
-  paymentReference              String
-  metadata                      Json?
-  order                         Order     @relation(fields: [orderId], references: [id])
+  id               Int          @id @default(autoincrement())
+  orderId          Int
+  cartId           Int?
+  userId           Int?
+  status           PaymentStatus
+  amount           Decimal
+  currency         String
+  gatewayReference String
+  paymentReference String
+  metadata         Json?
+  order            Order        @relation(fields: [orderId], references: [id])
 }
 
 enum PaymentStatus {
@@ -111,4 +111,74 @@ model PasswordResetToken {
   attempts    Int?     @default(0)
   createdAt   DateTime @default(now())
   user        User     @relation(fields: [userId], references: [id])
+}
+
+/// =====================
+/// Catalog management schema
+/// =====================
+
+/// Represents a product category; supports hierarchical nesting via parent/children
+model Category {
+  id        Int        @id @default(autoincrement())
+  name      String
+  slug      String     @unique
+  parentId  Int?
+  parent    Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryToCategory")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  productCategory    Product[] @relation("ProductCategory")
+  productSubcategory Product[] @relation("ProductSubcategory")
+}
+
+/// Represents a product in the catalog
+model Product {
+  id                   Int        @id @default(autoincrement())
+  name                 String
+  slug                 String     @unique
+  description          String?
+  brand                String?
+  price                Decimal
+  currency             String
+  listPrice            Decimal?
+  salePrice            Decimal?
+  saleStartsAt         DateTime?
+  saleEndsAt           DateTime?
+  priceUpdatedAt       DateTime?
+  isActive             Boolean    @default(true)
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  // Inventory fields
+  stockQuantity        Int        @default(0)
+  availableQuantity    Int        @default(0)
+  reservedQuantity     Int        @default(0)
+  inventoryStatus      String?
+  availabilityUpdatedAt DateTime?
+  isAvailable          Boolean    @default(true)
+  popularityScore      Int        @default(0)
+
+  // Category relations (supports main & subcategory)
+  categoryId           Int?
+  category             Category?  @relation("ProductCategory", fields: [categoryId], references: [id])
+  subcategoryId        Int?
+  subcategory          Category?  @relation("ProductSubcategory", fields: [subcategoryId], references: [id])
+
+  images               ProductImage[]
+}
+
+/// Stores images and metadata for products
+model ProductImage {
+  id         Int      @id @default(autoincrement())
+  productId  Int
+  url        String
+  altText    String?
+  focalPoint Json?
+  provider   String
+  sortOrder  Int      @default(0)
+  isPrimary  Boolean  @default(false)
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 }
