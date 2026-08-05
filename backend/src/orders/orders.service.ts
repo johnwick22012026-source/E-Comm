@@ -29,6 +29,8 @@ import {
   OrderPaymentDto,
   OrderShipmentDto,
 } from './dto/order-response.dto'
+import { NotificationService } from '../notifications/notification.service'
+import { NotificationEventLogService } from '../notifications/notification-event-log.service'
 
 export type OrderCreationSummary = {
   id: number
@@ -46,7 +48,11 @@ export type OrderCreationSummary = {
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name)
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationService: NotificationService,
+    private readonly notificationEventLogService: NotificationEventLogService,
+  ) {}
 
   async createFromPayment(
     payload: CreateOrderFromPaymentDto,
@@ -144,6 +150,24 @@ export class OrdersService {
 
       return { order: createdOrder, payment: createdPayment }
     })
+
+    if (isCaptured) {
+      const eventId = `order_confirmed:${order.referenceId}`
+      const shouldNotify = await this.notificationEventLogService.recordEventIfNew(eventId, 'order:confirmed')
+      if (shouldNotify) {
+        await this.notificationService.sendOrderConfirmationEmail({
+          email: cart?.email ?? '',
+          customerName: cart?.customerName ?? undefined,
+          orderNumber: order.referenceId,
+          orderDate: now.toISOString(),
+          items: [],
+          subtotal: this.formatCurrency(payment.amount, payment.currency),
+          shippingCost: '$0.00',
+          total: this.formatCurrency(payment.amount, payment.currency),
+          shippingMethod: undefined,
+        })
+      }
+    }
 
     return this.mapSummary(order, payment)
   }
@@ -274,6 +298,10 @@ export class OrdersService {
     const downloadUrl = await this.buildInvoiceDownloadUrl(invoice)
 
     return { downloadUrl }
+  }
+
+  private formatCurrency(amount: Prisma.Decimal, currency: string) {
+    return `${currency.toUpperCase()} ${amount.toFixed(2)}`
   }
 
   private mapSummary(order: Order, payment: Payment | null): OrderCreationSummary {
