@@ -13,6 +13,9 @@ model User {
   passwordHash            String
   emailVerified           Boolean                    @default(false)
   emailVerifiedAt         DateTime?
+  lastLoginAt             DateTime?
+  createdAt               DateTime                   @default(now())
+  updatedAt               DateTime                   @updatedAt
   sessions                Session[]
   carts                   Cart[]
   orders                  Order[]
@@ -43,16 +46,23 @@ model Order {
   id                          Int       @id @default(autoincrement())
   referenceId                 String    @unique
   userId                      Int?
+  user                        User?     @relation(fields: [userId], references: [id])
   status                      OrderStatus
   paymentReference            String?
   paymentGatewayTransactionId String?
   paymentConfirmedAt          DateTime?
   finalizedAt                 DateTime?
+  cancelledAt                 DateTime?
+  cancellationReason          String?
   createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
   payment                     Payment?
   orderLineItems              OrderLineItem[]
   shipments                   Shipment[]
   invoices                    Invoice[]
+
+  @@index([status])
+  @@index([userId])
 }
 
 enum OrderStatus {
@@ -110,6 +120,19 @@ model PasswordResetToken {
   attemptedAt DateTime?
   attempts    Int?     @default(0)
   createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+model SavedPaymentPreference {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  provider    String
+  lastFour    String
+  expiryMonth Int
+  expiryYear  Int
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id])
 }
 
