@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { useRouter } from 'next/router'
+import { useNavigate } from 'react-router-dom'
 import { API_BASE, parseApiError } from '../../../../lib/api'
 
 interface Category {
@@ -10,7 +10,7 @@ interface Category {
 }
 
 const CategoriesPage: React.FC = () => {
-  const router = useRouter()
+  const navigate = useNavigate()
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
@@ -52,7 +52,7 @@ const CategoriesPage: React.FC = () => {
   return (
     <div>
       <h1>Categories</h1>
-      <button onClick={() => router.push('/admin/catalog/categories/new')}>New Category</button>
+      <button onClick={() => navigate('/admin/catalog/categories/new')}>New Category</button>
       {loading && <p>Loading...</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
       {!loading && !error && (
@@ -78,7 +78,7 @@ const CategoriesPage: React.FC = () => {
                     <td>{cat.slug}</td>
                     <td>{cat.parentId ?? '-'}</td>
                     <td>
-                      <button onClick={() => router.push(`/admin/catalog/categories/${cat.id}`)}>
+                      <button onClick={() => navigate(`/admin/catalog/categories/${cat.id}`)}>
                         Edit
                       </button>{' '}
                       <button onClick={() => handleDelete(cat.id)}>Delete</button>
