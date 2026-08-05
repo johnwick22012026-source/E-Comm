@@ -13,6 +13,9 @@ export default function OperationsPage() {
         <li>
           <Link href="/admin/operations/customers">Customers</Link>
         </li>
+        <li>
+          <Link href="/admin/reporting">Reporting</Link>
+        </li>
       </ul>
     </Layout>
   )
