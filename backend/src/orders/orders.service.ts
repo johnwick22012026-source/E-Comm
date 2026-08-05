@@ -1,7 +1,7 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common'
 import { CreateOrderFromPaymentDto, PaymentCaptureStatus } from './dto/create-order-from-payment.dto'
@@ -9,6 +9,8 @@ import {
   Invoice,
   Order,
   OrderLineItem,
+  OrderStatus,
+  Payment,
   PaymentAttemptStatus,
   PaymentStatus,
   Prisma,
@@ -18,12 +20,14 @@ import { PrismaService } from '../prisma/prisma.service'
 import { randomBytes } from 'crypto'
 import { ListOrdersQueryDto, OrderSortField, SortDirection } from './dto/order-query.dto'
 import {
+  CancelOrderRequestDto,
   OrderDetailResponseDto,
-  OrderListItemDto,
+  OrderInvoiceDto,
+  OrderInvoiceDownloadResponseDto,
   OrderLineItemDto,
+  OrderListItemDto,
   OrderPaymentDto,
   OrderShipmentDto,
-  OrderInvoiceDto,
 } from './dto/order-response.dto'
 
 export type OrderCreationSummary = {
@@ -40,6 +44,8 @@ export type OrderCreationSummary = {
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name)
+
   constructor(private readonly prisma: PrismaService) {}
 
   async createFromPayment(
@@ -201,6 +207,89 @@ export class OrdersService {
     return this.mapDetail(order)
   }
 
+  async cancelOrderForCustomer(
+    userId: number | undefined,
+    orderId: number,
+    body: CancelOrderRequestDto,
+  ): Promise<OrderDetailResponseDto> {
+    if (!userId) {
+      throw new BadRequestException('Authenticated user context is required to cancel orders')
+    }
+
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, userId },
+    })
+
+    if (!order) {
+      throw new NotFoundException('Order not found')
+    }
+
+    const eligibility = this.evaluateCancellable(order.status)
+    if (!eligibility.cancellable) {
+      throw new BadRequestException(eligibility.cancelReason ?? 'Order cannot be cancelled')
+    }
+
+    const cancellationReason = this.normalizeReason(body.reason)
+
+    await this.prisma.order.update({
+      where: { id: order.id },
+      data: {
+        status: OrderStatus.CANCELLED,
+      },
+    })
+
+    this.recordCancellationAudit(order, userId, cancellationReason)
+    await this.dispatchCancellationHooks(order, cancellationReason)
+
+    return this.getOrderDetailForCustomer(userId, orderId)
+  }
+
+  async getInvoiceDownloadLinkForCustomer(
+    userId: number | undefined,
+    orderId: number,
+    invoiceId: number,
+  ): Promise<OrderInvoiceDownloadResponseDto> {
+    if (!userId) {
+      throw new BadRequestException('Authenticated user context is required to download invoices')
+    }
+
+    const invoice = await this.prisma.invoice.findFirst({
+      where: {
+        id: invoiceId,
+        orderId,
+        order: {
+          userId,
+        },
+      },
+    })
+
+    if (!invoice) {
+      throw new NotFoundException('Invoice not found')
+    }
+
+    if (!invoice.url) {
+      throw new NotFoundException('Invoice file is missing')
+    }
+
+    const downloadUrl = await this.buildInvoiceDownloadUrl(invoice)
+
+    return { downloadUrl }
+  }
+
+  private mapSummary(order: Order, payment: Payment | null): OrderCreationSummary {
+    return {
+      id: order.id,
+      referenceId: order.referenceId,
+      status: order.status,
+      paymentReference: order.paymentReference,
+      paymentGatewayTransactionId: order.paymentGatewayTransactionId,
+      paymentStatus: payment?.status ?? PaymentStatus.PENDING,
+      amount: payment ? Number(payment.amount) : 0,
+      currency: (payment?.currency ?? 'USD').toUpperCase(),
+      createdAt: order.createdAt,
+    }
+  }
+
   private mapListItem(order: Order & { payment: { status: PaymentStatus; amount: Prisma.Decimal; currency: string } | null }): OrderListItemDto {
     const payment = order.payment
     const cancellability = this.evaluateCancellable(order.status)
@@ -321,5 +410,25 @@ export class OrdersService {
 
   private generateOrderReference() {
     return `ORD-${randomBytes(6).toString('hex')}`
+  }
+
+  private normalizeReason(value?: string) {
+    const trimmed = value?.trim()
+    return trimmed && trimmed.length > 0 ? trimmed : 'Customer requested cancellation'
+  }
+
+  private async dispatchCancellationHooks(order: Order, reason: string) {
+    this.logger.debug(`Dispatching cancellation workflow for order ${order.id}`)
+    // In a real deployment, this is where payment reversals, fulfillment cancellations, or event bus
+    // notifications would be triggered so other services can react to the cancellation.
+  }
+
+  private recordCancellationAudit(order: Order, userId: number, reason: string) {
+    this.logger.log(`Order ${order.id} cancelled by customer ${userId}. Reason: ${reason}`)
+  }
+
+  private async buildInvoiceDownloadUrl(invoice: Invoice): Promise<string> {
+    this.logger.debug(`Authorizing download for invoice ${invoice.id}`)
+    return invoice.url
   }
 }
