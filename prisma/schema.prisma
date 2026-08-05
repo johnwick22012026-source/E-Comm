@@ -7,380 +7,108 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum CommunicationChannel {
-  EMAIL
-  SMS
-  PUSH
-}
-
-enum PaymentMethod {
-  CARD
-  UPI
-  NET_BANKING
-  WALLET
-}
-
-enum PaymentStatus {
-  DRAFT
-  PENDING
-  AUTHORIZED
-  CAPTURED
-  FAILED
-  REFUNDED
-  VOIDED
-}
-
-enum PaymentRefundStatus {
-  PENDING
-  COMPLETED
-  FAILED
-  CANCELED
-}
-
-enum PaymentStatusHistorySource {
-  INTERNAL
-  GATEWAY
-}
-
-enum SavedCartRestoreStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  FAILED
-}
-
-enum SavedCartItemRestoreStatus {
-  PENDING
-  RESTORED
-  FAILED
-}
-
-enum CouponDiscountType {
-  PERCENTAGE
-  FIXED
-}
-
-enum CouponRedemptionStatus {
-  PENDING
-  APPLIED
-  EXPIRED
-  INVALIDATED
-}
-
-enum ShippingEstimateStatus {
-  DRAFT
-  CONFIRMED
-  EXPIRED
-}
-
-enum CheckoutSessionStatus {
-  DRAFT
-  REVIEW
-  PENDING_PAYMENT
-  COMPLETED
-  ABANDONED
-}
-
-enum PaymentAttemptStatus {
-  PENDING
-  AUTHORIZED
-  FAILED
-  CANCELED
-}
-
-enum OrderStatus {
-  PENDING_PAYMENT
-  CONFIRMED
-  FAILED
-  CANCELLED
-  REFUNDED
-}
-
-enum AttributeDataType {
-  TEXT
-  INTEGER
-  DECIMAL
-  BOOLEAN
-  DATE
-}
-
-enum InventoryStatus {
-  IN_STOCK
-  BACKORDER
-  PREORDER
-  DISCONTINUED
-}
-
-enum RelatedProductType {
-  ACCESSORY
-  ALTERNATIVE
-  COMPLEMENTARY
-  SIMILAR
-}
-
-enum CartItemStatus {
-  ACTIVE
-  REMOVED
-}
-
-enum SavedPaymentPreferenceState {
-  ACTIVE
-  REVOKED
-  DELETED
-}
-
-// === CUSTOMER PROFILE, ADDRESSES & PREFERENCES ===
-model CustomerProfile {
-  id           Int                       @id @default(autoincrement())
-  userId       Int                       @unique
-  user         User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  firstName    String?
-  lastName     String?
-  phone        String?
-  dateOfBirth  DateTime?
-  addresses    Address[]
-  preferences  CommunicationPreference[]
-  createdAt    DateTime                  @default(now())
-  updatedAt    DateTime                  @updatedAt
-
-  @@index([userId])
-}
-
-model Address {
-  id           Int             @id @default(autoincrement())
-  profileId    Int
-  profile      CustomerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  label        String?         // e.g. "Home", "Work"
-  fullName     String
-  company      String?
-  streetLine1  String
-  streetLine2  String?
-  city         String
-  state        String?
-  postalCode   String
-  country      String
-  phone        String?
-  isDefault    Boolean         @default(false)
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
-
-  @@index([profileId])
-}
-
-model CommunicationPreference {
-  id           Int                  @id @default(autoincrement())
-  profileId    Int
-  profile      CustomerProfile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  channel      CommunicationChannel
-  preference   String               // e.g. "NEWSLETTER", "TRANSACTIONAL"
-  enabled      Boolean              @default(true)
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
-
-  @@unique([profileId, channel, preference])
-  @@index([profileId])
-}
-
-model SavedPaymentPreference {
-  id              Int                              @id @default(autoincrement())
-  userId          Int
-  user            User                             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  gatewayToken    String
-  maskedDisplay   String                            // e.g. "**** **** **** 4242"
-  brand           String?
-  method          PaymentMethod?
-  expiryMonth     Int?
-  expiryYear      Int?
-  billingNickname String?
-  isDefault       Boolean                           @default(false)
-  state           SavedPaymentPreferenceState       @default(ACTIVE)
-  revokedAt       DateTime?
-  deletedAt       DateTime?
-  createdAt       DateTime                          @default(now())
-  updatedAt       DateTime                          @updatedAt
-
-  @@index([userId])
-  @@index([userId, isDefault, state])
-}
-
-// === EMAIL NOTIFICATION AUDIT & METADATA ===
-enum EmailNotificationType {
-  VERIFICATION_EMAIL
-  PASSWORD_RESET_EMAIL
-}
-
-enum EmailNotificationStatus {
-  PENDING
-  SENT
-  DELIVERED
-  FAILED
-}
-
-model EmailNotification {
-  id                Int                      @id @default(autoincrement())
-  recipient         String                   // recipient email address
-  type              EmailNotificationType    // notification category
-  userId            Int?                     // linked account, if applicable
-  user              User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  orderId           Int?                     // linked order, if applicable
-  order             Order?                   @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  providerMessageId String?                  // message ID from email provider
-  status            EmailNotificationStatus  @default(PENDING)  // delivery status
-  sentAt            DateTime?                // when email was sent
-  deliveredAt       DateTime?                // when delivery was confirmed
-  error             String?                  // error or retry details
-  createdAt         DateTime                 @default(now())
-  updatedAt         DateTime                 @updatedAt
-
-  @@index([recipient])
-  @@index([userId])
-  @@index([orderId])
-  @@index([status])
-}
-
-// === ORDER LIFECYCLE, SHIPMENT & INVOICES ===
-model OrderStatusHistory {
-  id        Int         @id @default(autoincrement())
-  orderId   Int
-  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  status    OrderStatus
-  changedAt DateTime    @default(now())
-
-  @@index([orderId])
-}
-
-model Invoice {
-  id        Int      @id @default(autoincrement())
-  orderId   Int
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  fileUrl   String
-  createdAt DateTime @default(now())
-
-  @@index([orderId])
-}
-
-// === EXISTING SCHEMA BELOW ===
 model User {
   id                    Int                        @id @default(autoincrement())
   email                 String                     @unique
   passwordHash          String
   emailVerified         Boolean                    @default(false)
   emailVerifiedAt       DateTime?
-  createdAt             DateTime                   @default(now())
-  updatedAt             DateTime                   @updatedAt
-
-  customerProfile       CustomerProfile?
-  verificationTokens    EmailVerificationToken[]
   sessions              Session[]
-  passwordResetTokens   PasswordResetToken[]
-  savedCartSnapshots    SavedCartSnapshot[]
-  couponRedemptions     CouponRedemption[]
-  checkoutSessions      CheckoutSession[]
-}
-
-model Order {
-  id                        Int                     @id @default(autoincrement())
-  referenceId               String                  @unique
-  userId                    Int?
-  user                      User?                   @relation(fields: [userId], references: [id])
-  status                    OrderStatus
-  paymentReference          String?
-  paymentGatewayTransactionId String?
-  paymentConfirmedAt        DateTime?
-  finalizedAt               DateTime?
-  createdAt                 DateTime                @default(now())
-  updatedAt                 DateTime                @updatedAt
-
-  cancellationReason        String?
-  cancelledAt               DateTime?
-
-  shipmentCarrier           String?
-  shipmentTrackingNumber    String?
-  shippedAt                 DateTime?
-  deliveredAt               DateTime?
-
-  statusHistory             OrderStatusHistory[]
-  invoices                  Invoice[]
-
-  @@index([userId, createdAt])
-  @@index([userId, id])
-}
-
-model EmailVerificationToken {
-  id         Int      @id @default(autoincrement())
-  userId     Int
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  token      String   @unique
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-
-  @@index([userId])
+  carts                 Cart[]
+  orders                Order[]
+  savedPaymentPrefs     SavedPaymentPreference[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
 }
 
 model Session {
-  id         Int      @id @default(autoincrement())
-  userId     Int
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  token      String   @unique
-  ipAddress  String?
-  userAgent  String?
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
+  id           Int      @id @default(autoincrement())
+  sessionToken String   @unique
+  userId       Int
+  expiresAt    DateTime
+  active       Boolean  @default(true)
+  user         User     @relation(fields: [userId], references: [id])
+}
 
-  @@index([userId])
+model Cart {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id])
+  items     String
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
+
+model Order {
+  id                         Int       @id @default(autoincrement())
+  referenceId                String    @unique
+  userId                     Int?
+  status                     OrderStatus
+  paymentReference           String?
+  paymentGatewayTransactionId String?
+  paymentConfirmedAt         DateTime?
+  finalizedAt                DateTime?
+  createdAt                  DateTime  @default(now())
+  payment                    Payment?
+  orderLineItems             OrderLineItem[]
+  shipments                  Shipment[]
+  invoices                   Invoice[]
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  FULFILLED
+  CANCELLED
+}
+
+model Payment {
+  id                            Int       @id @default(autoincrement())
+  orderId                       Int
+  cartId                        Int?
+  userId                        Int?
+  status                        PaymentStatus
+  amount                        Decimal
+  currency                      String
+  gatewayReference              String
+  paymentReference              String
+  metadata                      Json?
+  order                         Order     @relation(fields: [orderId], references: [id])
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  FAILED
+}
+
+model NotificationEventLog {
+  id        Int      @id @default(autoincrement())
+  eventId   String   @unique
+  type      String
+  createdAt DateTime @default(now())
+}
+
+model EmailVerificationToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  userId    Int
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 model PasswordResetToken {
-  id         Int      @id @default(autoincrement())
-  userId     Int
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  token      String   @unique
-  expiresAt  DateTime
-  usedAt     DateTime?
-  createdAt  DateTime @default(now())
-
-  @@index([userId])
-}
-
-model SavedCartSnapshot {
-  id         Int      @id @default(autoincrement())
-  userId     Int
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sessionToken   String? @unique
-  status         SavedCartRestoreStatus @default(PENDING)
-  restoredAt     DateTime?
-  metadata        Json
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  @@index([userId])
-  @@index([userId, status, createdAt])
-}
-
-model CouponRedemption {
-  id         Int                  @id @default(autoincrement())
-  userId     Int
-  user       User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  couponCode String
-  status     CouponRedemptionStatus
-  appliedAt  DateTime?
-  createdAt  DateTime             @default(now())
-
-  @@index([userId])
-  @@index([couponCode])
-}
-
-model CheckoutSession {
-  id             Int                    @id @default(autoincrement())
-  userId         Int
-  user           User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sessionToken   String                 @unique
-  status         CheckoutSessionStatus
-  totalAmount    Decimal
-  currency       String
-  expiresAt      DateTime
-  completedAt    DateTime?
-  createdAt      DateTime               @default(now())
-
-  @@index([userId])
+  id          Int      @id @default(autoincrement())
+  tokenHash   String   @unique
+  userId      Int
+  expiresAt   DateTime
+  usedAt      DateTime?
+  attemptedAt DateTime?
+  attempts    Int?     @default(0)
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
 }
