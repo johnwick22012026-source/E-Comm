@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { useRouter } from 'next/router'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { API_BASE, parseApiError } from '../../../../lib/api'
 
 interface Category {
@@ -9,9 +9,22 @@ interface Category {
   parentId?: number | null
 }
 
+const linkButtonStyle: React.CSSProperties = {
+  marginLeft: '0.5rem',
+  padding: '0.35rem 0.75rem',
+  border: '1px solid rgba(0, 0, 0, 0.15)',
+  borderRadius: '4px',
+  textDecoration: 'none',
+  color: 'inherit',
+  backgroundColor: 'transparent',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+}
+
 const EditCategoryPage: React.FC = () => {
-  const router = useRouter()
-  const { id } = router.query
+  const navigate = useNavigate()
+  const { id } = useParams<{ id?: string }>()
   const [category, setCategory] = useState<Category | null>(null)
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
@@ -45,6 +58,7 @@ const EditCategoryPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!id) return
     setLoading(true)
     setError(null)
     try {
@@ -59,7 +73,7 @@ const EditCategoryPage: React.FC = () => {
       if (!res.ok) {
         throw new Error(await parseApiError(res, 'Update failed'))
       }
-      router.push('/admin/catalog/categories')
+      navigate('/admin/catalog/categories')
     } catch (e: any) {
       setError(e.message)
     } finally {
@@ -101,9 +115,17 @@ const EditCategoryPage: React.FC = () => {
             <button type="submit" disabled={loading}>
               {loading ? 'Updating...' : 'Update'}
             </button>{' '}
-            <button type="button" onClick={() => router.back()} disabled={loading}>
+            <Link
+              to="/admin/catalog/categories"
+              style={
+                loading
+                  ? { ...linkButtonStyle, pointerEvents: 'none', opacity: 0.6, cursor: 'not-allowed' }
+                  : linkButtonStyle
+              }
+              aria-disabled={loading}
+            >
               Cancel
-            </button>
+            </Link>
           </div>
         </form>
       )}
