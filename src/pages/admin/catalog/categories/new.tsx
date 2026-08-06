@@ -65,7 +65,11 @@ const NewCategoryPage: React.FC = () => {
           <button type="submit" disabled={loading}>
             {loading ? 'Saving...' : 'Save'}
           </button>{' '}
-          <button type="button" onClick={() => navigate(-1)} disabled={loading}>
+          <button
+            type="button"
+            onClick={() => navigate('/admin/catalog/categories')}
+            disabled={loading}
+          >
             Cancel
           </button>
         </div>
