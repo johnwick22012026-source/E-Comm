@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { useRouter } from 'next/router'
+import { useNavigate, useParams } from 'react-router-dom'
 import { API_BASE, parseApiError } from '../../../../lib/api'
 
 interface ProductImage {
@@ -24,8 +24,8 @@ interface Product {
 }
 
 const EditProductPage: React.FC = () => {
-  const router = useRouter()
-  const { id } = router.query
+  const navigate = useNavigate()
+  const { id } = useParams<{ id: string }>()
   const [product, setProduct] = useState<Product | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -105,6 +105,7 @@ const EditProductPage: React.FC = () => {
   }
 
   const handleImageAdd = async () => {
+    if (!id) return
     const url = prompt('Enter image URL')
     if (!url) return
     try {
@@ -124,6 +125,7 @@ const EditProductPage: React.FC = () => {
   }
 
   const handleImageRemove = async (imageId: number) => {
+    if (!id) return
     if (!confirm('Remove this image?')) return
     try {
       const res = await fetch(`${API_BASE}/admin/catalog/products/${id}/images/${imageId}`, {
@@ -237,7 +239,7 @@ const EditProductPage: React.FC = () => {
             <button type="submit" disabled={loading}>
               {loading ? 'Updating...' : 'Update'}
             </button>{' '}
-            <button type="button" onClick={() => router.back()} disabled={loading}>
+            <button type="button" onClick={() => navigate(-1)} disabled={loading}>
               Cancel
             </button>
           </div>
