@@ -75,6 +75,32 @@ const TRACKING_URLS: Record<string, string> = {
   DHL: 'https://www.dhl.com/en/express/tracking.html?AWB=',
 }
 
+const normalizeOrderDetail = (payload: Partial<OrderDetail>): OrderDetail => {
+  const lineItems = Array.isArray(payload.lineItems) ? payload.lineItems : []
+  const shipments = Array.isArray(payload.shipments) ? payload.shipments : []
+  const invoices = Array.isArray(payload.invoices) ? payload.invoices : []
+  const totalsAmount =
+    typeof payload.totals?.amount === 'number' ? payload.totals.amount : 0
+  const totalsCurrency =
+    payload.totals?.currency ?? lineItems[0]?.currency ?? 'USD'
+  return {
+    id: payload.id ?? 0,
+    referenceId: payload.referenceId ?? '—',
+    status: payload.status ?? 'Unknown',
+    createdAt: payload.createdAt ?? new Date().toISOString(),
+    payment: payload.payment ?? null,
+    lineItems,
+    shipments,
+    invoices,
+    totals: {
+      amount: totalsAmount,
+      currency: totalsCurrency,
+    },
+    cancellable: payload.cancellable ?? false,
+    cancelReason: payload.cancelReason ?? null,
+  }
+}
+
 const OrderDetailPage = () => {
   const { orderId } = useParams<{ orderId: string }>()
   const [order, setOrder] = useState<OrderDetail | null>(null)
@@ -109,12 +135,12 @@ const OrderDetailPage = () => {
         return res.json()
       })
       .then((data: OrderDetail) => {
-        setOrder(data)
+        setOrder(normalizeOrderDetail(data))
         setState('success')
       })
       .catch((err) => {
         if (controller.signal.aborted) return
-        if (state === 'not-found') return
+        if (err instanceof Error && err.message === 'not-found') return
         setState('error')
         setMessage(err instanceof Error ? err.message : 'An error occurred')
       })
@@ -147,8 +173,8 @@ const OrderDetailPage = () => {
         const err = await parseApiError(refreshed, 'Failed to refresh order')
         throw new Error(err)
       }
-      const updated: OrderDetail = await refreshed.json()
-      setOrder(updated)
+      const updatedPayload = await refreshed.json()
+      setOrder(normalizeOrderDetail(updatedPayload))
       setState('success')
       setCancelState('success')
     } catch (err: any) {
