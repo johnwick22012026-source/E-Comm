@@ -78,6 +78,12 @@ const fileChipStyle: CSSProperties = {
   marginBottom: '0.25rem',
 }
 
+const navigationLinkStyle: CSSProperties = {
+  color: '#2563eb',
+  fontWeight: 600,
+  textDecoration: 'none',
+}
+
 const FinalAuditReportPage = () => {
   const [report, setReport] = useState<FinalAuditReport | null>(null)
   const [loading, setLoading] = useState(true)
@@ -129,6 +135,11 @@ const FinalAuditReportPage = () => {
           A concise, maintainable overview of the recent audit findings and the system areas they apply to.
         </p>
       </header>
+      <div style={{ marginBottom: '1rem' }}>
+        <a href="/admin/reporting/validation-review" style={navigationLinkStyle}>
+          Review validation evidence & outcomes
+        </a>
+      </div>
 
       {loading && (
         <div style={{ padding: '1rem 0', color: '#2563eb', fontWeight: 600 }}>Loading audit report…</div>
