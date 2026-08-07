@@ -1,8 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { ReportQueryDto, DashboardReportType, ReportGranularity } from './dto/report-query.dto'
+import { RiskRegisterQueryDto } from './dto/risk-register-query.dto'
 import { Decimal } from '@prisma/client/runtime/library'
-import { Prisma } from '@prisma/client'
+import {
+  Prisma,
+  RiskRegisterItem,
+  RiskImpact,
+  RiskLikelihood,
+  RiskSeverity,
+  RiskStatus,
+} from '@prisma/client'
 
 export type InventorySnapshot = {
   productId: number
@@ -52,11 +60,59 @@ export type ExportRows = {
   rows: Array<string[]>
 }
 
+export type RiskRegisterItemSummary = {
+  id: number
+  title: string
+  description?: string | null
+  severity: RiskSeverity
+  impact: RiskImpact
+  likelihood: RiskLikelihood
+  classification: RiskStatus
+  priority: number
+  riskScore: number
+  impactNotes: string
+  likelihoodNotes: string
+  sourceContext?: string | null
+  metadata?: Prisma.JsonValue | null
+  isTopRisk: boolean
+}
+
+export type TopRiskHighlight = {
+  id: number
+  title: string
+  riskScore: number
+  classification: RiskStatus
+  priority: number
+}
+
+export type RiskRegisterResponse = {
+  items: RiskRegisterItemSummary[]
+  topRiskHighlights: TopRiskHighlight[]
+  totalCount: number
+}
+
 @Injectable()
 export class ReportingService {
   private readonly logger = new Logger(ReportingService.name)
   private readonly defaultGranularity = ReportGranularity.DAILY
   private readonly statuses = ['CONFIRMED', 'SHIPPED', 'FULFILLED']
+  private readonly defaultRiskLimit = 25
+  private readonly maxRiskLimit = 100
+  private readonly topRiskHighlightCount = 3
+  private readonly impactNotesMap: Record<RiskImpact, string> = {
+    CATASTROPHIC: 'Catastrophic impact will halt critical services and demand an immediate fix.',
+    MAJOR: 'Major impact risks degrading key customer journeys and merit priority reviews.',
+    MODERATE: 'Moderate impact risks may cause measurable friction but can be contained.',
+    MINOR: 'Minor impact risks are localized; regular observation is sufficient.',
+    NEGLIGIBLE: 'Negligible impact risks are low priority and are often informational.',
+  }
+  private readonly likelihoodNotesMap: Record<RiskLikelihood, string> = {
+    CERTAIN: 'Certain: the failure has already been observed and confirmed.',
+    LIKELY: 'Likely: high probability of occurrence during upcoming releases.',
+    POSSIBLE: 'Possible: could materialize without ongoing mitigation.',
+    UNLIKELY: 'Unlikely: limited evidence for the event but keep monitoring.',
+    RARE: 'Rare: extremely infrequent but document outcomes if triggered.',
+  }
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -296,6 +352,80 @@ export class ReportingService {
       headers: ['Period', 'Orders', 'Revenue'],
       rows: trends.map((entry) => [entry.period, String(entry.value), entry.revenue?.toFixed(2) ?? '0.00']),
     }
+  }
+
+  async getRiskRegister(query: RiskRegisterQueryDto): Promise<RiskRegisterResponse> {
+    const where = this.buildWhereForRiskQuery(query)
+    const requestedLimit = query.limit ?? this.defaultRiskLimit
+    const limit = Math.min(Math.max(requestedLimit, 1), this.maxRiskLimit)
+    const skip = Math.max(query.offset ?? 0, 0)
+
+    const [items, totalCount] = await Promise.all([
+      this.prisma.riskRegisterItem.findMany({
+        where,
+        orderBy: [
+          { riskScore: 'desc' },
+          { priority: 'desc' },
+          { updatedAt: 'desc' },
+        ],
+        take: limit,
+        skip,
+      }),
+      this.prisma.riskRegisterItem.count({ where }),
+    ])
+
+    const mappedItems = items.map((item, index) => this.mapRiskItem(item, index < this.topRiskHighlightCount))
+    const topRiskHighlights = mappedItems
+      .slice(0, this.topRiskHighlightCount)
+      .map((item) => ({
+        id: item.id,
+        title: item.title,
+        riskScore: item.riskScore,
+        classification: item.classification,
+        priority: item.priority,
+      }))
+
+    return {
+      items: mappedItems,
+      topRiskHighlights,
+      totalCount,
+    }
+  }
+
+  private mapRiskItem(item: RiskRegisterItem, isTopRisk: boolean): RiskRegisterItemSummary {
+    return {
+      id: item.id,
+      title: item.title,
+      description: item.description ?? null,
+      severity: item.severity,
+      impact: item.impact,
+      likelihood: item.likelihood,
+      classification: item.status,
+      priority: item.priority,
+      riskScore: this.round(Number(item.riskScore ?? 0)),
+      impactNotes: this.impactNotesMap[item.impact] ?? 'Impact detail unavailable.',
+      likelihoodNotes: this.likelihoodNotesMap[item.likelihood] ?? 'Likelihood detail unavailable.',
+      sourceContext: item.sourceContext ?? null,
+      metadata: item.metadata ?? null,
+      isTopRisk,
+    }
+  }
+
+  private buildWhereForRiskQuery(query: RiskRegisterQueryDto): Prisma.RiskRegisterItemWhereInput {
+    const where: Prisma.RiskRegisterItemWhereInput = {}
+    if (query.status) {
+      where.status = query.status
+    }
+    if (query.severity) {
+      where.severity = query.severity
+    }
+    if (query.likelihood) {
+      where.likelihood = query.likelihood
+    }
+    if (typeof query.minRiskScore === 'number') {
+      where.riskScore = { gte: query.minRiskScore }
+    }
+    return where
   }
 
   private normalizeRange(query: ReportQueryDto): { start: Date; end: Date } {
