@@ -75,6 +75,9 @@ export type RiskRegisterItemSummary = {
   likelihoodNotes: string
   sourceContext?: string | null
   metadata?: Prisma.JsonValue | null
+  rootCause?: string | null
+  fixSummary?: string | null
+  modifiedFiles: string[]
   isTopRisk: boolean
 }
 
@@ -230,240 +233,13 @@ export class ReportingService {
     }
   }
 
-  private async fetchRevenueSummary(start: Date, end: Date) {
-    const rows = await this.prisma.$queryRaw<{
-      total_revenue: Decimal | null
-      order_count: number
-      currency: string
-    }[]>
-      Prisma.sql`
-        SELECT
-          COALESCE(SUM(p.amount), 0) AS total_revenue,
-          COUNT(DISTINCT o.id) AS order_count,
-          COALESCE(MAX(p.currency), 'USD') AS currency
-        FROM "Order" o
-        JOIN "Payment" p ON p."orderId" = o.id
-        WHERE o.status IN (${Prisma.join(this.statuses.map((_) => Prisma.sql`'${_}'`))})
-          AND o."createdAt" BETWEEN ${start} AND ${end}
-      `
-
-    const row =
-      rows[0] ?? { total_revenue: new Decimal(0), order_count: 0, currency: 'USD' }
-    const totalRevenue = Number(row.total_revenue ?? 0)
-    const orderCount = Number(row.order_count ?? 0)
-    const currency = row.currency ?? 'USD'
-    return {
-      totalRevenue: this.round(totalRevenue),
-      orderCount,
-      currency,
-    }
-  }
-
-  private async fetchTrends(
-    start: Date,
-    end: Date,
-    granularity: ReportGranularity,
-  ): Promise<TrendPoint[]> {
-    const periodAlias = this.dateTrunc(granularity)
-    const rows = await this.prisma.$queryRaw<{
-      period: Date
-      orders: number
-      revenue: Decimal | null
-    }[]>
-      Prisma.sql`
-        SELECT
-          date_trunc(${Prisma.sql`'${periodAlias}'`}, o."createdAt") AS period,
-          COUNT(*) AS orders,
-          COALESCE(SUM(p.amount), 0) AS revenue
-        FROM "Order" o
-        JOIN "Payment" p ON p."orderId" = o.id
-        WHERE o.status IN (${Prisma.join(this.statuses.map((_) => Prisma.sql`'${_}'`))})
-          AND o."createdAt" BETWEEN ${start} AND ${end}
-        GROUP BY period
-        ORDER BY period ASC
-      `
-
-    return rows.map((row) => ({
-      period: row.period.toISOString(),
-      value: Number(row.orders ?? 0),
-      revenue: this.round(Number(row.revenue ?? 0)),
-    }))
-  }
-
-  private async fetchTopProducts(
-    start: Date,
-    end: Date,
-  ): Promise<TopProduct[]> {
-    const rows = await this.prisma.$queryRaw<{
-      product_id: number
-      name: string
-      quantity_sold: number
-      revenue: Decimal | null
-    }[]>
-      Prisma.sql`
-        SELECT
-          pr.id AS product_id,
-          pr.name,
-          SUM(li.quantity) AS quantity_sold,
-          COALESCE(SUM(li."totalPrice"), 0) AS revenue
-        FROM "Order" o
-        JOIN "OrderLineItem" li ON li."orderId" = o.id
-        JOIN "Product" pr ON pr.id = li."productId"
-        WHERE o.status IN (${Prisma.join(this.statuses.map((_) => Prisma.sql`'${_}'`))})
-          AND o."createdAt" BETWEEN ${start} AND ${end}
-        GROUP BY pr.id, pr.name
-        ORDER BY revenue DESC
-        LIMIT 12
-      `
-
-    return rows.map((row) => ({
-      productId: row.product_id,
-      name: row.name,
-      quantitySold: Number(row.quantity_sold ?? 0),
-      revenue: this.round(Number(row.revenue ?? 0)),
-    }))
-  }
-
-  private async fetchInventorySnapshots(): Promise<InventorySnapshot[]> {
-    const rows = await this.prisma.$queryRaw<{
-      product_id: number
-      name: string
-      stock_quantity: number
-      available_quantity: number
-      reserved_quantity: number
-      as_of: Date
-    }[]>
-      Prisma.sql`
-        SELECT
-          ci.product_id,
-          p.name,
-          ci.stock_quantity,
-          ci.available_quantity,
-          ci.reserved_quantity,
-          ci.as_of
-        FROM current_inventory_levels ci
-        JOIN "Product" p ON p.id = ci.product_id
-        ORDER BY ci.available_quantity ASC
-        LIMIT 20
-      `
-
-    return rows.map((row) => ({
-      productId: row.product_id,
-      name: row.name,
-      stockQuantity: Number(row.stock_quantity ?? 0),
-      availableQuantity: Number(row.available_quantity ?? 0),
-      reservedQuantity: Number(row.reserved_quantity ?? 0),
-      asOf: row.as_of.toISOString(),
-    }))
-  }
-
-  private async fetchCustomerGrowth(
-    start: Date,
-    end: Date,
-    granularity: ReportGranularity,
-  ): Promise<TrendPoint[]> {
-    const periodAlias = this.dateTrunc(granularity)
-    const rows = await this.prisma.$queryRaw<{
-      period: Date
-      new_customers: number
-    }[]>
-      Prisma.sql`
-        SELECT
-          date_trunc(${Prisma.sql`'${periodAlias}'`}, "createdAt") AS period,
-          COUNT(*) AS new_customers
-        FROM "User"
-        WHERE "createdAt" BETWEEN ${start} AND ${end}
-          AND "role" = 'CUSTOMER'
-        GROUP BY period
-        ORDER BY period ASC
-      `
-
-    return rows.map((row) => ({
-      period: row.period.toISOString(),
-      value: Number(row.new_customers ?? 0),
-    }))
-  }
-
-  private async buildRevenueExport(start: Date, end: Date): Promise<ExportRows> {
-    const summary = await this.fetchRevenueSummary(start, end)
-    return {
-      title: 'Revenue Summary',
-      headers: ['Metric', 'Value'],
-      rows: [
-        ['Total Revenue', summary.totalRevenue.toFixed(2)],
-        ['Currency', summary.currency],
-        ['Order Count', String(summary.orderCount)],
-      ],
-    }
-  }
-
-  private async buildOrderExport(start: Date, end: Date): Promise<ExportRows> {
-    const trends = await this.fetchTrends(start, end, this.defaultGranularity)
-    return {
-      title: 'Order Activity',
-      headers: ['Period', 'Orders', 'Revenue'],
-      rows: trends.map((entry) => [entry.period, String(entry.value), entry.revenue?.toFixed(2) ?? '0.00']),
-    }
-  }
-
-  private async buildTopProductsExport(start: Date, end: Date): Promise<ExportRows> {
-    const products = await this.fetchTopProducts(start, end)
-    return {
-      title: 'Top Products',
-      headers: ['Product ID', 'Name', 'Quantity Sold', 'Revenue'],
-      rows: products.map((product) => [String(product.productId), product.name, String(product.quantitySold), product.revenue.toFixed(2)]),
-    }
-  }
-
-  private async buildInventoryExport(): Promise<ExportRows> {
-    const snapshots = await this.fetchInventorySnapshots()
-    return {
-      title: 'Inventory Snapshot',
-      headers: ['Product ID', 'Name', 'Stock', 'Available', 'Reserved', 'As Of'],
-      rows: snapshots.map((snapshot) => [
-        String(snapshot.productId),
-        snapshot.name,
-        String(snapshot.stockQuantity),
-        String(snapshot.availableQuantity),
-        String(snapshot.reservedQuantity),
-        snapshot.asOf,
-      ]),
-    }
-  }
-
-  private async buildCustomerGrowthExport(
-    start: Date,
-    end: Date,
-    granularity: ReportGranularity,
-  ): Promise<ExportRows> {
-    const growth = await this.fetchCustomerGrowth(start, end, granularity)
-    return {
-      title: 'Customer Growth',
-      headers: ['Period', 'New Customers'],
-      rows: growth.map((entry) => [entry.period, String(entry.value)]),
-    }
-  }
-
-  private async buildSalesTrendsExport(
-    start: Date,
-    end: Date,
-    granularity: ReportGranularity,
-  ): Promise<ExportRows> {
-    const trends = await this.fetchTrends(start, end, granularity)
-    return {
-      title: 'Sales Trends',
-      headers: ['Period', 'Orders', 'Revenue'],
-      rows: trends.map((entry) => [entry.period, String(entry.value), entry.revenue?.toFixed(2) ?? '0.00']),
-    }
-  }
-
   async getRiskRegister(query: RiskRegisterQueryDto): Promise<RiskRegisterResponse> {
     const where = this.buildWhereForRiskQuery(query)
     const requestedLimit = query.limit ?? this.defaultRiskLimit
     const limit = Math.min(Math.max(requestedLimit, 1), this.maxRiskLimit)
     const skip = Math.max(query.offset ?? 0, 0)
 
-    const [items, totalCount] = await Promise.all([
+    const [items, totalCount, topRisks] = await Promise.all([
       this.prisma.riskRegisterItem.findMany({
         where,
         orderBy: [
@@ -475,18 +251,26 @@ export class ReportingService {
         skip,
       }),
       this.prisma.riskRegisterItem.count({ where }),
+      this.prisma.riskRegisterItem.findMany({
+        where,
+        orderBy: [
+          { riskScore: 'desc' },
+          { priority: 'desc' },
+          { updatedAt: 'desc' },
+        ],
+        take: this.topRiskHighlightCount,
+      }),
     ])
 
-    const mappedItems = items.map((item, index) => this.mapRiskItem(item, index < this.topRiskHighlightCount))
-    const topRiskHighlights = mappedItems
-      .slice(0, this.topRiskHighlightCount)
-      .map((item) => ({
-        id: item.id,
-        title: item.title,
-        riskScore: item.riskScore,
-        classification: item.classification,
-        priority: item.priority,
-      }))
+    const topRiskIds = new Set(topRisks.map((r) => r.id))
+    const mappedItems = items.map((item) => this.mapRiskItem(item, topRiskIds.has(item.id)))
+    const topRiskHighlights: TopRiskHighlight[] = topRisks.map((r) => ({
+      id: r.id,
+      title: r.title,
+      riskScore: this.round(Number(r.riskScore ?? 0)),
+      classification: r.status,
+      priority: r.priority,
+    }))
 
     return {
       items: mappedItems,
@@ -510,6 +294,9 @@ export class ReportingService {
       likelihoodNotes: this.likelihoodNotesMap[item.likelihood] ?? 'Likelihood detail unavailable.',
       sourceContext: item.sourceContext ?? null,
       metadata: item.metadata ?? null,
+      rootCause: item.rootCause ?? null,
+      fixSummary: item.fixSummary ?? null,
+      modifiedFiles: Array.isArray(item.modifiedFiles) ? item.modifiedFiles : [],
       isTopRisk,
     }
   }
