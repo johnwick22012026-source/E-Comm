@@ -47,21 +47,40 @@ const OrderHistoryPage = () => {
   const fetchOrders = async (page: number) => {
     setState('loading')
     setMessage('Loading your orders…')
+    const safeLimit = Math.max(1, meta.limit || 1)
     try {
       const res = await fetch(
-        `${API_BASE}/orders?page=${page}&limit=${meta.limit}`,
+        `${API_BASE}/orders?page=${page}&limit=${safeLimit}`,
         { credentials: 'include' }
       )
       if (!res.ok) {
         const err = await parseApiError(res, 'Failed to load orders')
         throw new Error(err)
       }
-      const json = (await res.json()) as OrdersResponse
-      setOrders(json.data)
-      setMeta(json.meta)
+      const json = (await res.json()) as Partial<OrdersResponse>
+      const safeOrders = Array.isArray(json?.data) ? json.data : []
+      setOrders(safeOrders)
+      setMeta((prev) => ({
+        total:
+          typeof json?.meta?.total === 'number'
+            ? json.meta.total
+            : prev.total,
+        page:
+          typeof json?.meta?.page === 'number'
+            ? json.meta.page
+            : page,
+        limit:
+          typeof json?.meta?.limit === 'number' && json.meta.limit > 0
+            ? json.meta.limit
+            : prev.limit > 0
+              ? prev.limit
+              : safeLimit,
+      }))
       setState('success')
-      if (json.data.length === 0) {
+      if (safeOrders.length === 0) {
         setMessage('You have no orders yet.')
+      } else {
+        setMessage('')
       }
     } catch (err: any) {
       setState('error')
@@ -74,14 +93,16 @@ const OrderHistoryPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meta.page])
 
+  const paginationLimit = Math.max(1, meta.limit || 1)
+  const totalPages = Math.max(1, Math.ceil(meta.total / paginationLimit))
+
   const prevPage = () => {
     if (meta.page > 1) {
       setMeta((m) => ({ ...m, page: m.page - 1 }))
     }
   }
   const nextPage = () => {
-    const maxPage = Math.ceil(meta.total / meta.limit)
-    if (meta.page < maxPage) {
+    if (meta.page < totalPages) {
       setMeta((m) => ({ ...m, page: m.page + 1 }))
     }
   }
@@ -127,11 +148,11 @@ const OrderHistoryPage = () => {
                 Previous
               </button>
               <span>
-                Page {meta.page} of {Math.ceil(meta.total / meta.limit)}
+                Page {meta.page} of {totalPages}
               </span>
               <button
                 onClick={nextPage}
-                disabled={meta.page >= Math.ceil(meta.total / meta.limit)}
+                disabled={meta.page >= totalPages}
               >
                 Next
               </button>
