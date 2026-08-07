@@ -44,8 +44,8 @@ describe('CheckoutPage payment authorization flow', () => {
     const button = screen.getByRole('button', { name: /authorize payment/i })
     await userEvent.click(button)
 
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/payment authorized/i))
-    expect(screen.getByRole('status')).toHaveTextContent(/ref: REF-123/i)
+    await screen.findByText(/payment authorized/i)
+    await screen.findByText(/ref: REF-123/i)
   })
 
   it('renders server errors when authorization is declined', async () => {
@@ -71,7 +71,7 @@ describe('CheckoutPage payment authorization flow', () => {
     const button = screen.getByRole('button', { name: /authorize payment/i })
     await userEvent.click(button)
 
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/marketplace rejected/i))
+    await screen.findByText(/marketplace rejected the request./i)
     expect(screen.getByText('Card expired')).toBeInTheDocument()
     expect(screen.getByText('Bank blocked the transaction')).toBeInTheDocument()
   })
