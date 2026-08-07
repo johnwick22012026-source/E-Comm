@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { ReportQueryDto, DashboardReportType, ReportGranularity } from './dto/report-query.dto'
 import { RiskRegisterQueryDto } from './dto/risk-register-query.dto'
+import { FinalAuditReportDto } from './dto/final-audit-report.dto'
 import { Decimal } from '@prisma/client/runtime/library'
 import {
   Prisma,
@@ -171,8 +172,70 @@ export class ReportingService {
     }
   }
 
+  async getFinalAuditReport(): Promise<FinalAuditReportDto> {
+    return {
+      architectureSummary: {
+        overview:
+          'Monorepo-style ecommerce platform pairing a NestJS backend with a Vite + React storefront and Prisma-managed Postgres data access.',
+        infrastructure: [
+          'Backend organized by domain modules for auth, catalog, cart, checkout, orders, payments, customer profile, notifications, promotions, reporting, and admin workflows.',
+          'Prisma schema and migrations capture relational models for users, products, carts, payments, orders, saved preferences, and reporting aggregates.',
+          'Frontend mirrors backend domains with pages, shared components, context providers, and route-level tests to validate flows.',
+        ],
+        keyDecisions: [
+          'Retain NestJS for the API layer to keep domain services testable while reusing the DI container for shared infrastructure.',
+          'Use Prisma as the single source of truth for schema and migrations to keep data modeling aligned across services.',
+          'Surface context-driven auth and checkout state on the frontend so cross-page flows remain centralized.',
+        ],
+      },
+      reviewedScope: {
+        domains: [
+          'auth',
+          'catalog',
+          'cart',
+          'checkout',
+          'orders',
+          'payments',
+          'customer-profile',
+          'notifications',
+          'promotions',
+          'reporting',
+          'admin',
+        ],
+        timeframe: 'Rolling 30-day window by default, adjustable via report query parameters.',
+        focusAreas: [
+          'Dashboard metrics (revenue, orders, top products, inventory, customer growth, sales trends)',
+          'Risk register filters and highlights',
+          'Exports and audit-ready artifacts used by admin reporting workflows',
+        ],
+      },
+      findingsApplicability: {
+        summary:
+          'Findings from dashboard analytics and the risk register map to the areas under review, enabling the UI to surface applicable audit narratives.',
+        applicabilityNotes: [
+          {
+            area: 'Reporting dashboards',
+            applicability: 'Revenues, orders, inventories, and growth trends support executive summary narratives and expose anomalies.',
+          },
+          {
+            area: 'Risk register',
+            applicability: 'Highlights top risks with severity, impact, likelihood, and classification aligning with audit findings.',
+          },
+          {
+            area: 'Exports & reporting exports',
+            applicability: 'CSV, Excel, and PDF exports provide artefacts for downstream auditors and stakeholders to validate reported numbers.',
+          },
+        ],
+      },
+    }
+  }
+
   private async fetchRevenueSummary(start: Date, end: Date) {
-    const row = await this.prisma.$queryRaw<{ total_revenue: Decimal | null; order_count: number; currency: string }>
+    const rows = await this.prisma.$queryRaw<{
+      total_revenue: Decimal | null
+      order_count: number
+      currency: string
+    }[]>
       Prisma.sql`
         SELECT
           COALESCE(SUM(p.amount), 0) AS total_revenue,
@@ -184,9 +247,11 @@ export class ReportingService {
           AND o."createdAt" BETWEEN ${start} AND ${end}
       `
 
-    const totalRevenue = Number(row?.total_revenue ?? 0)
-    const orderCount = Number(row?.order_count ?? 0)
-    const currency = row?.currency ?? 'USD'
+    const row =
+      rows[0] ?? { total_revenue: new Decimal(0), order_count: 0, currency: 'USD' }
+    const totalRevenue = Number(row.total_revenue ?? 0)
+    const orderCount = Number(row.order_count ?? 0)
+    const currency = row.currency ?? 'USD'
     return {
       totalRevenue: this.round(totalRevenue),
       orderCount,
@@ -194,9 +259,17 @@ export class ReportingService {
     }
   }
 
-  private async fetchTrends(start: Date, end: Date, granularity: ReportGranularity): Promise<TrendPoint[]> {
+  private async fetchTrends(
+    start: Date,
+    end: Date,
+    granularity: ReportGranularity,
+  ): Promise<TrendPoint[]> {
     const periodAlias = this.dateTrunc(granularity)
-    const rows = await this.prisma.$queryRaw<{ period: Date; orders: number; revenue: Decimal | null }>
+    const rows = await this.prisma.$queryRaw<{
+      period: Date
+      orders: number
+      revenue: Decimal | null
+    }[]>
       Prisma.sql`
         SELECT
           date_trunc(${Prisma.sql`'${periodAlias}'`}, o."createdAt") AS period,
@@ -217,8 +290,16 @@ export class ReportingService {
     }))
   }
 
-  private async fetchTopProducts(start: Date, end: Date): Promise<TopProduct[]> {
-    const rows = await this.prisma.$queryRaw<{ product_id: number; name: string; quantity_sold: number; revenue: Decimal | null }>
+  private async fetchTopProducts(
+    start: Date,
+    end: Date,
+  ): Promise<TopProduct[]> {
+    const rows = await this.prisma.$queryRaw<{
+      product_id: number
+      name: string
+      quantity_sold: number
+      revenue: Decimal | null
+    }[]>
       Prisma.sql`
         SELECT
           pr.id AS product_id,
@@ -244,7 +325,14 @@ export class ReportingService {
   }
 
   private async fetchInventorySnapshots(): Promise<InventorySnapshot[]> {
-    const rows = await this.prisma.$queryRaw<{ product_id: number; name: string; stock_quantity: number; available_quantity: number; reserved_quantity: number; as_of: Date }>
+    const rows = await this.prisma.$queryRaw<{
+      product_id: number
+      name: string
+      stock_quantity: number
+      available_quantity: number
+      reserved_quantity: number
+      as_of: Date
+    }[]>
       Prisma.sql`
         SELECT
           ci.product_id,
@@ -269,9 +357,16 @@ export class ReportingService {
     }))
   }
 
-  private async fetchCustomerGrowth(start: Date, end: Date, granularity: ReportGranularity): Promise<TrendPoint[]> {
+  private async fetchCustomerGrowth(
+    start: Date,
+    end: Date,
+    granularity: ReportGranularity,
+  ): Promise<TrendPoint[]> {
     const periodAlias = this.dateTrunc(granularity)
-    const rows = await this.prisma.$queryRaw<{ period: Date; new_customers: number }>
+    const rows = await this.prisma.$queryRaw<{
+      period: Date
+      new_customers: number
+    }[]>
       Prisma.sql`
         SELECT
           date_trunc(${Prisma.sql`'${periodAlias}'`}, "createdAt") AS period,
@@ -336,7 +431,11 @@ export class ReportingService {
     }
   }
 
-  private async buildCustomerGrowthExport(start: Date, end: Date, granularity: ReportGranularity): Promise<ExportRows> {
+  private async buildCustomerGrowthExport(
+    start: Date,
+    end: Date,
+    granularity: ReportGranularity,
+  ): Promise<ExportRows> {
     const growth = await this.fetchCustomerGrowth(start, end, granularity)
     return {
       title: 'Customer Growth',
@@ -345,7 +444,11 @@ export class ReportingService {
     }
   }
 
-  private async buildSalesTrendsExport(start: Date, end: Date, granularity: ReportGranularity): Promise<ExportRows> {
+  private async buildSalesTrendsExport(
+    start: Date,
+    end: Date,
+    granularity: ReportGranularity,
+  ): Promise<ExportRows> {
     const trends = await this.fetchTrends(start, end, granularity)
     return {
       title: 'Sales Trends',
