@@ -205,7 +205,7 @@ export class CartPricingService {
     const baseCost = isDomestic ? this.domesticBaseCost : this.internationalBaseCost
     const perItem = isDomestic ? this.domesticPerItem : this.internationalPerItem
 
-    const cost = count > 0 ? this.round(baseCost + perItem * count) : 0
+    const cost = this.round(baseCost + perItem * count)
     const serviceLevel = isDomestic ? 'Domestic Standard' : 'International Economy'
     const estimatedDeliveryDays = isDomestic ? 4 : 12
 
