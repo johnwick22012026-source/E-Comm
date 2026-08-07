@@ -2,15 +2,24 @@ import '@testing-library/jest-dom/vitest'
 import React from 'react'
 import { describe, expect, it, vi, afterEach, afterAll } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Outlet } from 'react-router-dom'
 import App from '../App'
 import * as AuthContext from '../context/AuthContext'
 
-vi.mock('../components/Layout', () => ({
-  Layout: ({ children }: { children?: React.ReactNode }) => (
-    <div data-testid="app-layout">{children}</div>
-  ),
-}))
+vi.mock('../components/Layout', () => {
+  const Layout = ({ children }: { children?: React.ReactNode }) => (
+    <div data-testid="app-layout">
+      <Outlet />
+      {children}
+    </div>
+  )
+
+  return {
+    __esModule: true,
+    Layout,
+    default: Layout,
+  }
+})
 
 vi.mock('../pages/CatalogPage', () => () => <div>Mock Catalog Page</div>)
 vi.mock('../pages/ProductDetailPage', () => () => <div>Mock Product Detail Page</div>)
