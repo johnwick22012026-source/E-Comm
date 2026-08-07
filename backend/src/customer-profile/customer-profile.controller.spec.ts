@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing'
+import { UnauthorizedException } from '@nestjs/common'
 import { CustomerProfileController } from './customer-profile.controller'
 import { CustomerProfileService } from './customer-profile.service'
 import { CommunicationChannel } from '@prisma/client'
@@ -83,5 +84,15 @@ describe('CustomerProfileController', () => {
 
     expect(response).toEqual({ message: 'ok' })
     expect(service.changePassword).toHaveBeenCalledWith(100, expect.any(Object))
+  })
+
+  it('throws UnauthorizedException when authenticated user is missing', async () => {
+    await expect(controller.getProfile({} as any)).rejects.toThrow(UnauthorizedException)
+  })
+
+  it('throws UnauthorizedException when authenticated user id is invalid', async () => {
+    await expect(
+      controller.getProfile({ user: { sub: 'not-a-number' } } as any),
+    ).rejects.toThrow(UnauthorizedException)
   })
 })
