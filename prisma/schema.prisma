@@ -45,10 +45,10 @@ model Cart {
 }
 
 model Order {
-  id                          Int       @id @default(autoincrement())
-  referenceId                 String    @unique
+  id                          Int               @id @default(autoincrement())
+  referenceId                 String            @unique
   userId                      Int?
-  user                        User?     @relation(fields: [userId], references: [id])
+  user                        User?             @relation(fields: [userId], references: [id])
   status                      OrderStatus
   paymentReference            String?
   paymentGatewayTransactionId String?
@@ -56,8 +56,8 @@ model Order {
   finalizedAt                 DateTime?
   cancelledAt                 DateTime?
   cancellationReason          String?
-  createdAt                   DateTime  @default(now())
-  updatedAt                   DateTime  @updatedAt
+  createdAt                   DateTime          @default(now())
+  updatedAt                   DateTime          @updatedAt
   payment                     Payment?
   orderLineItems              OrderLineItem[]
   shipments                   Shipment[]
@@ -65,6 +65,58 @@ model Order {
 
   @@index([status])
   @@index([userId])
+}
+
+model OrderLineItem {
+  id         Int      @id @default(autoincrement())
+  orderId    Int
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId  Int?
+  product    Product? @relation(fields: [productId], references: [id])
+  productSku String?
+  name       String
+  quantity   Int            @default(1)
+  unitPrice  Decimal
+  totalPrice Decimal
+  currency   String
+  metadata   Json?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model Shipment {
+  id             Int      @id @default(autoincrement())
+  orderId        Int
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status         String
+  carrier        String?
+  trackingNumber String?
+  shippedAt      DateTime?
+  deliveredAt    DateTime?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([orderId])
+}
+
+model Invoice {
+  id            Int      @id @default(autoincrement())
+  orderId       Int
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  invoiceNumber String   @unique
+  totalAmount   Decimal
+  currency      String
+  issuedAt      DateTime
+  paidAt        DateTime?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([orderId])
 }
 
 enum OrderStatus {
