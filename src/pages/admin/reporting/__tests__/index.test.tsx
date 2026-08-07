@@ -104,4 +104,17 @@ describe('Admin reporting risk register UI', () => {
     expect(highlightCards[1]).toHaveTextContent('Payment Reconciliation Lag')
     expect(highlightCards[2]).toHaveTextContent('Inventory Drift')
   })
+
+  it('does not render highlight cards when there are no top risk highlights', async () => {
+    const originalHighlights = [...riskResponse.topRiskHighlights]
+    try {
+      riskResponse.topRiskHighlights = []
+      render(<ReportingDashboardPage />)
+
+      expect(await screen.findByText('Gateway Outages')).toBeInTheDocument()
+      expect(screen.queryAllByTestId('top-risk-highlight')).toHaveLength(0)
+    } finally {
+      riskResponse.topRiskHighlights = originalHighlights
+    }
+  })
 })
