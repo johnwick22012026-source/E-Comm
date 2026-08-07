@@ -13,6 +13,7 @@ model User {
   passwordHash            String
   emailVerified           Boolean                    @default(false)
   emailVerifiedAt         DateTime?
+  role                    String                     @default("CUSTOMER")
   lastLoginAt             DateTime?
   createdAt               DateTime                   @default(now())
   updatedAt               DateTime                   @updatedAt
@@ -20,6 +21,7 @@ model User {
   carts                   Cart[]
   orders                  Order[]
   savedPaymentPrefs       SavedPaymentPreference[]
+  paymentAttempts         PaymentAttempt[]
   emailVerificationTokens EmailVerificationToken[]
   passwordResetTokens     PasswordResetToken[]
 }
@@ -87,7 +89,43 @@ model Payment {
   order            Order        @relation(fields: [orderId], references: [id])
 }
 
+model PaymentAttempt {
+  id                     Int                    @id @default(autoincrement())
+  selectedPaymentMethod  PaymentMethod
+  cartId                 Int?
+  cart                   Cart?                  @relation(fields: [cartId], references: [id])
+  userId                 Int?
+  user                   User?                  @relation(fields: [userId], references: [id])
+  status                 PaymentAttemptStatus   @default(PENDING)
+  idempotencyKey         String                 @unique
+  currency               String
+  amount                 Decimal
+  metadata               Json?
+  failureReason          String?
+  providerReference      String?
+  completedAt            DateTime?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+
+  @@index([cartId])
+  @@index([userId])
+}
+
 enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  FAILED
+}
+
+enum PaymentMethod {
+  CARD
+  BANK_TRANSFER
+  UPI
+  WALLET
+}
+
+enum PaymentAttemptStatus {
   PENDING
   AUTHORIZED
   CAPTURED
