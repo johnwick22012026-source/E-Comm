@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common'
+import { BadRequestException } from '@nestjs/common'
 import { CouponDiscountType } from '@prisma/client'
 import { AdminPromotionsService } from './admin-promotions.service'
 
@@ -22,7 +22,7 @@ describe('AdminPromotionsService', () => {
         count: jest.fn(),
         findMany: jest.fn(),
       },
-      $transaction: jest.fn((cb) => cb),
+      $transaction: jest.fn().mockImplementation(async (cb) => cb(prismaMock)),
     }
 
     service = new AdminPromotionsService(prismaMock)
