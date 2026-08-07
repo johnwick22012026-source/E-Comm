@@ -293,7 +293,6 @@ model DailySalesSummary {
 
   @@map("daily_sales_summary")
   @@id([date])
-  @@ignore
 }
 
 model DailyCustomerGrowth {
@@ -302,7 +301,6 @@ model DailyCustomerGrowth {
 
   @@map("daily_customer_growth")
   @@id([date])
-  @@ignore
 }
 
 model DailyProductSales {
@@ -316,7 +314,6 @@ model DailyProductSales {
   @@id([date, productId])
   @@index([date])
   @@index([productId], name: "idx_daily_product_sales_product")
-  @@ignore
 }
 
 model CurrentInventoryLevels {
@@ -328,5 +325,52 @@ model CurrentInventoryLevels {
 
   @@map("current_inventory_levels")
   @@id([productId])
-  @@ignore
+}
+
+enum RiskSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum RiskImpact {
+  CATASTROPHIC
+  MAJOR
+  MODERATE
+  MINOR
+  NEGLIGIBLE
+}
+
+enum RiskLikelihood {
+  CERTAIN
+  LIKELY
+  POSSIBLE
+  UNLIKELY
+  RARE
+}
+
+enum RiskStatus {
+  CONFIRMED
+  SUSPECTED
+}
+
+model RiskRegisterItem {
+  id            Int            @id @default(autoincrement())
+  title         String
+  description   String?
+  severity      RiskSeverity
+  impact        RiskImpact
+  likelihood    RiskLikelihood
+  status        RiskStatus
+  priority      Int            @default(0)
+  riskScore     Decimal        @default(0)
+  sourceContext String?
+  metadata      Json?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([status])
+  @@index([priority])
+  @@index([riskScore])
 }
