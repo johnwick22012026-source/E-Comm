@@ -265,12 +265,25 @@ const CheckoutPage = () => {
         return
       }
 
-      const success = body?.success && body.status === 'authorized'
+      const resolvedBody = body ?? {}
+      const backendStatus = resolvedBody.status ?? resolvedBody.result?.status
+      const normalizedStatus =
+        typeof backendStatus === 'string' ? backendStatus.toLowerCase() : ''
+      const success = normalizedStatus === 'authorized'
+      const providerReference = resolvedBody.result?.providerReference ?? resolvedBody.providerReference
+      const serverErrors = Array.isArray(resolvedBody.errors) ? resolvedBody.errors.filter(Boolean) : []
+      const fallbackMessage =
+        resolvedBody.message ??
+        resolvedBody.result?.message ??
+        'Payment was declined. Review the details and try again.'
+
       setStatus(success ? 'success' : 'error')
       if (success) {
-        setMessage(`Payment authorized (ref: ${body.providerReference ?? 'unknown'}). Proceed to order review.`)
+        setErrors([])
+        setMessage(`Payment authorized (ref: ${providerReference ?? 'unknown'}). Proceed to order review.`)
       } else {
-        setMessage(body?.message ?? 'Payment was declined. Review the details and try again.')
+        setErrors(serverErrors)
+        setMessage(fallbackMessage)
       }
     } catch (error) {
       setStatus('error')
