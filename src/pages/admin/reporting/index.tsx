@@ -15,6 +15,9 @@ type ReviewedScope = {
 type FindingsApplicabilityNote = {
   area: string
   applicability: string
+  rootCause: string
+  fixApplied: string
+  filesChanged: string[]
 }
 
 type FindingsApplicability = {
@@ -50,6 +53,29 @@ const chipStyle: CSSProperties = {
   backgroundColor: '#f3f4f6',
   fontSize: '0.85rem',
   margin: '0.25rem',
+}
+
+const fileListContainerStyle: CSSProperties = {
+  marginTop: '0.35rem',
+  padding: '0.75rem',
+  borderRadius: '0.65rem',
+  border: '1px dashed #d1d5db',
+  backgroundColor: '#f9fafb',
+  maxHeight: '160px',
+  overflowY: 'auto',
+}
+
+const fileChipStyle: CSSProperties = {
+  padding: '0.35rem 0.65rem',
+  borderRadius: '0.45rem',
+  backgroundColor: '#ffffff',
+  border: '1px solid #d1d5db',
+  fontSize: '0.8rem',
+  color: '#1f2937',
+  whiteSpace: 'nowrap',
+  textOverflow: 'ellipsis',
+  overflow: 'hidden',
+  marginBottom: '0.25rem',
 }
 
 const FinalAuditReportPage = () => {
@@ -171,6 +197,26 @@ const FinalAuditReportPage = () => {
                 <div key={note.area} style={{ marginBottom: '0.75rem' }}>
                   <h3 style={{ margin: 0, fontSize: '0.95rem', color: '#111827' }}>{note.area}</h3>
                   <p style={{ margin: '0.25rem 0 0', color: '#374151' }}>{note.applicability}</p>
+                  <div style={{ marginTop: '0.35rem', color: '#1f2937' }}>
+                    <p style={{ margin: '0.2rem 0' }}>
+                      <strong>Root cause:</strong> {note.rootCause}
+                    </p>
+                    <p style={{ margin: '0.2rem 0' }}>
+                      <strong>Fix applied:</strong> {note.fixApplied}
+                    </p>
+                  </div>
+                  <div style={fileListContainerStyle}>
+                    <p style={{ margin: '0 0 0.35rem', fontSize: '0.8rem', color: '#6b7280' }}>Files changed</p>
+                    {note.filesChanged.length ? (
+                      note.filesChanged.map((path) => (
+                        <div key={path} style={fileChipStyle} title={path}>
+                          {path}
+                        </div>
+                      ))
+                    ) : (
+                      <p style={{ margin: 0, fontSize: '0.8rem', color: '#6b7280' }}>No files recorded for this finding.</p>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
