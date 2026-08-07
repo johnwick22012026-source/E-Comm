@@ -88,6 +88,30 @@ describe('CartService', () => {
     await expect(service.updateCartItemQuantity(99, 2, 4)).rejects.toThrow(BadRequestException)
   })
 
+  it('throws when updating an item belonging to another user', async () => {
+    const cartItem = {
+      id: 5,
+      cartId: 15,
+      status: CartItemStatus.ACTIVE,
+      quantity: 2,
+      cart: { id: 15, userId: 30 },
+      product: {
+        id: 103,
+        name: 'Shared product',
+        price: 15,
+        currency: 'USD',
+        availableQuantity: 10,
+        isAvailable: true,
+        isActive: true,
+        inventoryStatus: 'IN_STOCK',
+      },
+    }
+
+    prismaMock.cartItem.findUnique.mockResolvedValue(cartItem)
+
+    await expect(service.updateCartItemQuantity(31, 5, 3)).rejects.toThrow(BadRequestException)
+  })
+
   it('removing the last item returns zeroed totals and no items', async () => {
     const cartItem = {
       id: 3,
