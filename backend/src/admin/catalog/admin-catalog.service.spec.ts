@@ -1,7 +1,9 @@
-import { BadRequestException } from '@nestjs/common'
+import { BadRequestException, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../prisma/prisma.service'
 import { AdminCatalogService } from './admin-catalog.service'
+import { UpdateCategoryDto } from './dto/update-category.dto'
+import { UpdateProductDto } from './dto/update-product.dto'
 import { UpdateProductInventoryDto } from './dto/update-product-inventory.dto'
 
 describe('AdminCatalogService', () => {
@@ -15,6 +17,7 @@ describe('AdminCatalogService', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         findFirst: jest.fn().mockResolvedValue(null),
         delete: jest.fn().mockResolvedValue({} as any),
+        update: jest.fn().mockResolvedValue({ id: 1 }),
       } as unknown as Prisma.CategoryDelegate<Prisma.RejectOnNotFound | Prisma.RejectPerOperation | undefined>,
       product: {
         findUnique: jest.fn().mockResolvedValue({ id: 1 }),
@@ -86,6 +89,27 @@ describe('AdminCatalogService', () => {
 
       await expect(service.deleteCategory(1)).rejects.toBeInstanceOf(BadRequestException)
       expect(prisma.category.delete).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('updateCategory', () => {
+    it('throws when category is not found', async () => {
+      ;(prisma.category.findUnique as jest.Mock).mockResolvedValue(null)
+
+      await expect(service.updateCategory(1, { name: 'Reparent' } as UpdateCategoryDto)).rejects.toBeInstanceOf(
+        NotFoundException,
+      )
+
+      expect(prisma.category.update).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('updateProduct', () => {
+    it('throws when product is not found', async () => {
+      ;(prisma.product.findUnique as jest.Mock).mockResolvedValue(null)
+
+      await expect(service.updateProduct(1, {} as UpdateProductDto)).rejects.toBeInstanceOf(NotFoundException)
+      expect(prisma.product.update).not.toHaveBeenCalled()
     })
   })
 })
