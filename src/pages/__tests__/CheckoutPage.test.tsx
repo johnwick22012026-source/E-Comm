@@ -1,67 +1,78 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import '@testing-library/jest-dom'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CheckoutPage from '../CheckoutPage'
 
-describe('CheckoutPage', () => {
-  const successResponse = {
-    success: true,
-    status: 'authorized',
-    message: 'Authorized',
-    providerReference: 'ref-123',
-  }
+const createMockResponse = (body: unknown, ok = true) =>
+  Promise.resolve({
+    ok,
+    json: async () => body,
+  } as Response)
+
+describe('CheckoutPage payment authorization flow', () => {
+  let fetchMock: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn())
+    fetchMock = vi.fn()
+    global.fetch = fetchMock as unknown as typeof fetch
   })
 
   afterEach(() => {
-    vi.restoreAllMocks()
+    vi.resetAllMocks()
   })
 
-  it('displays method cards and indicates selection', async () => {
+  it('shows a success message when the backend authorizes the payment', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ items: [] }),
+      } as Response)
+      .mockResolvedValueOnce(
+        createMockResponse({
+          status: 'AUTHORIZED',
+          result: { providerReference: 'REF-123' },
+        }),
+      )
+
     render(<CheckoutPage />)
-    const methodButton = screen.getByRole('button', { name: /Card on file/i })
-    expect(methodButton).toHaveClass('is-active')
-    const walletButton = screen.getByRole('button', { name: /Wallet/i })
-    await userEvent.click(walletButton)
-    expect(walletButton).toHaveClass('is-active')
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    const tokenInput = screen.getByLabelText(/card token/i)
+    await userEvent.type(tokenInput, 'tok_test')
+
+    const button = screen.getByRole('button', { name: /authorize payment/i })
+    await userEvent.click(button)
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/payment authorized/i))
+    expect(screen.getByRole('status')).toHaveTextContent(/ref: REF-123/i)
   })
 
-  it('makes authorization request and shows success feedback', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => successResponse,
-    })
-    vi.stubGlobal('fetch', fetchMock)
+  it('renders server errors when authorization is declined', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ items: [] }),
+      } as Response)
+      .mockResolvedValueOnce(
+        createMockResponse({
+          status: 'failed',
+          message: 'Marketplace rejected the request.',
+          errors: ['Card expired', 'Bank blocked the transaction'],
+        }),
+      )
 
     render(<CheckoutPage />)
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
 
-    const tokenInput = screen.getByPlaceholderText(/token issued by the gateway/i)
-    await userEvent.type(tokenInput, 'tok_abc')
+    const tokenInput = screen.getByLabelText(/card token/i)
+    await userEvent.type(tokenInput, 'tok_decline')
 
-    const authorizeButton = screen.getByRole('button', { name: /Authorize payment/i })
-    await userEvent.click(authorizeButton)
+    const button = screen.getByRole('button', { name: /authorize payment/i })
+    await userEvent.click(button)
 
-    expect(fetchMock).toHaveBeenCalled()
-    expect(await screen.findByText(/Payment authorized/)).toBeInTheDocument()
-  })
-
-  it('shows error when backend responds with failure', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: false,
-      json: async () => ({ message: 'Cards offline' }),
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    render(<CheckoutPage />)
-
-    const tokenInput = screen.getByPlaceholderText(/token issued by the gateway/i)
-    await userEvent.type(tokenInput, 'tok_fail')
-
-    const authorizeButton = screen.getByRole('button', { name: /Authorize payment/i })
-    await userEvent.click(authorizeButton)
-
-    expect(await screen.findByText(/Cards offline/)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/marketplace rejected/i))
+    expect(screen.getByText('Card expired')).toBeInTheDocument()
+    expect(screen.getByText('Bank blocked the transaction')).toBeInTheDocument()
   })
 })
