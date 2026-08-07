@@ -13,7 +13,7 @@ export class AdminCatalogService {
   constructor(private readonly prisma: PrismaService) {}
 
   async createCategory(dto: CreateCategoryDto) {
-    if (dto.parentId) {
+    if (dto.parentId != null) {
       await this.ensureCategoryExists(dto.parentId)
     }
 
@@ -29,11 +29,13 @@ export class AdminCatalogService {
   }
 
   async updateCategory(id: number, dto: UpdateCategoryDto) {
-    if (dto.parentId) {
+    await this.ensureCategoryExists(id)
+
+    if (dto.parentId != null) {
       await this.ensureCategoryExists(dto.parentId)
     }
 
-    if (dto.parentId && dto.parentId === id) {
+    if (dto.parentId != null && dto.parentId === id) {
       throw new BadRequestException('Category cannot be its own parent.')
     }
 
@@ -85,11 +87,11 @@ export class AdminCatalogService {
   async createProduct(dto: CreateProductDto) {
     await this.ensureProductSlugAvailable(dto.slug)
 
-    if (dto.categoryId) {
+    if (dto.categoryId != null) {
       await this.ensureCategoryExists(dto.categoryId)
     }
 
-    if (dto.subcategoryId) {
+    if (dto.subcategoryId != null) {
       await this.ensureCategoryExists(dto.subcategoryId)
     }
 
@@ -122,11 +124,13 @@ export class AdminCatalogService {
   }
 
   async updateProduct(id: number, dto: UpdateProductDto) {
-    if (dto.categoryId) {
+    await this.ensureProductExists(id)
+
+    if (dto.categoryId != null) {
       await this.ensureCategoryExists(dto.categoryId)
     }
 
-    if (dto.subcategoryId) {
+    if (dto.subcategoryId != null) {
       await this.ensureCategoryExists(dto.subcategoryId)
     }
 
