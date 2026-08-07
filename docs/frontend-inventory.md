@@ -1,70 +1,108 @@
-# Frontend Architecture & Runtime Path Inventory
+# Frontend dependencies and integration inventory
 
-This document captures the current React/Vite frontend wiring: routing entry points, layout composition, shared state providers, and reusable component roles as exercised in production.
+This document captures the current Vite + React frontend setup, highlighting package/runtime dependencies, environment/runtime configuration, API client usage, and the UI areas that directly depend on backend contracts.
 
-## App Bootstrap & Routing
+## 1. Package/runtime dependencies
 
-- `src/App.tsx` is the single place that declares all `react-router-dom` routes wrapped by a top-level `<Layout />`.
-- Public routes handled by the layout include:
-  - `/` and `/catalog` → `<CatalogPage />`
-  - `/catalog/:id` → `<ProductDetailPage />`
-  - `/cart` → `<CartPage />`
-  - `/checkout` → `<CheckoutPage />`
-  - `/confirmation/:orderReference` → `<OrderConfirmationPage />`
-  - `/login`, `/register`, `/request-password`, `/set-password`, `/verify-email` → authentication flows
-  - `/account`, `/account/orders`, `/account/orders/:orderId` → account and order history/detail pages
-- Admin routes are nested under `/admin` and are guarded by `<AdminGuard />` that uses `useAuth()` to ensure the user is a support user before rendering its `<Outlet />`.
-  - `/admin/operations` → `<OperationsPage />`
-  - `/admin/catalog/*` subdivided into `/catalog/categories/*` (`<CatalogCategoriesPage />`) and `/catalog/products/*` (`<CatalogProductsPage />`)
-  - `/admin/coupons/*` → `<CouponsPage />`
-  - `/admin/promotions/*` → `<PromotionsPage />`
-  - `/admin/reporting/*` → `<ReportingPage />`
-- Several routes use `<Navigate />` redirects (`/admin` → `/admin/catalog/categories`, `/admin/catalog` → `/admin/catalog/categories`).
+Collected from `package.json`:
 
-## Layout Composition
+- **Runtime dependencies**
+  - `react` ^18.3.1
+  - `react-dom` ^18.3.1
+  - `react-router-dom` ^6.18.0
 
-- `src/components/Layout.tsx` composes the overall shell:
-  - Always renders a `<header>` that can optionally include an admin navigation menu (Operations, Catalog, Coupons, Promotions, Reporting) when `isSupportUser` from `useAuth()` is `true`.
-  - Exposes the page content via `<main>{children ?? <Outlet />}</main>` so route elements inherit the shared header/navigation.
+- **Dev/build/test dependencies**
+  - Vite build system and tooling: `vite` ^5.4.11
+  - React plugin for Vite: `@vitejs/plugin-react` ^4.3.3
+  - TypeScript compiler: `typescript` ^5.6.3
+  - Vitest test runner: `vitest` ^0.34.3
+  - Test utilities: `@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event`
+  - DOM shim for tests: `jsdom`
+  - Type definitions for React: `@types/react`, `@types/react-dom`
 
-## Shared State Providers & API Touchpoints
+Any change to runtime dependencies (e.g., upgrading React or React Router) will likely affect all UI code, so this dependency list should be revisited before upgrades.
 
-### AuthContext (`src/context/AuthContext.tsx`)
-- Centralizes authentication state and exposes `useAuth()` to consumers.
-- Maintains `user`, `loading`, `error`, `isReady`, and derived `isSupportUser`.
-- Provides async helpers for `/auth` endpoints: `register`, `login`, `logout`, `refreshUser` (called on mount to hydrate `user`).
-- `API_BASE` for auth calls is derived from `import.meta.env.VITE_API_URL` (fallback `http://localhost:3333`).
-- `useAuth()` is used by layout navigation and `AdminGuard`.
+## 2. Vite configuration
 
-### CheckoutContext (`src/context/CheckoutContext.tsx`)
-- Provides checkout session state and actions used in the checkout flow pages.
-- Key values/functions:
-  - `sessionToken` stored in `sessionStorage` under `checkoutSessionToken`.
-  - `isReady` toggled after hydration.
-  - `createSession`, `saveCustomerDetails`, `saveShippingAddress`, `fetchShippingMethods`, `selectShippingMethod`, `fetchReview`, `clear`.
-- All functions target `/checkout/sessions` and session-specific subpaths, always sending `credentials: 'include'` and JSON headers when altering state.
-- The context is accessed via `useCheckout()` within the checkout page components.
+`vite.config.ts` is minimal:
 
-### API Utility (`src/lib/api.ts`)
-- Exposes the same `API_BASE` for cross-cutting client code.
-- `parseApiError` helper normalizes server error responses for user feedback, reusing the same `message` contract returned by the backend.
+```ts
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
 
-## Key Pages & Component Relationships
+export default defineConfig({
+  plugins: [react()],
+})
+```
 
-- **Catalog & Product Pages**: `<CatalogPage />` and `<ProductDetailPage />` sit at `/catalog` paths; they are the storefront entry points.
-- **Cart & Checkout**: `<CartPage />` leads to `<CheckoutPage />`, which relies on `useCheckout()` to create sessions, capture customer/shipping data, retrieve shipping methods, and show review data before confirming an order.
-- **Account & Orders**: `<AccountPage />`, `<OrderHistoryPage />`, and `<OrderDetailPage />` depend on authenticated user state from `useAuth()` and likely fetch order data via shared API helpers.
-- **Auth Flows**: `<LoginPage />`, `<RegisterPage />`, `<RequestPasswordResetPage />`, `<SetNewPasswordPage />`, and `<VerifyEmailPage />` all interact with `/auth` routes, using `useAuth()` helpers for mutations plus global error/loading indicators.
-- **Admin Section**: All admin pages (`OperationsPage`, catalog/product management, coupons, promotions, reporting) render within `<AdminGuard />`, inheriting the shared layout, and depend on support-user navigation to surface their links.
+The only plugin is the official React plugin. Runtime config is accessed at runtime via `import.meta.env`, and new environment variables must be defined in `.env`/`.env.*` files using the `VITE_` prefix so that they are exposed to the client bundle. (The `define` option is only necessary when you need to provide compile-time replacements or defaults that cannot be supplied through `.env` files.)
 
-## Runtime Paths Summary
-- Consumers of `useAuth()`:
-  - `Layout` (to render admin nav when `isSupportUser`), `AdminGuard` (permission gate), any page that needs auth state or helper actions.
-- Consumers of `useCheckout()`:
-  - Checkout flow components under `/checkout` that need to orchestrate session state and present shipping/review data.
-- Reusable components:
-  - `Layout`: global shell + outlet for nested routes.
-  - `AdminGuard`: gate to ensure only support users see `/admin/*` content.
-  - `AuthContext` + `CheckoutContext`: cross-cutting providers installed high in the tree (presumably in `src/main.tsx`) so every page shares consistent state and API roots.
+## 3. Environment variables
 
-This inventory highlights the path from routing through layout to context-provided API helpers, covering both public and admin flows, the shared navigation, and the checkout session lifecycle.
+- `VITE_API_URL`: Defined in `src/lib/api.ts` as the base API URL used by frontend code.
+  - Default fallback: `http://localhost:3333`
+  - Any change to backend host/port or API contract must be reflected here or in Vite `.env` files because the API client resolves requests through this value.
+
+No other `process.env` or `import.meta.env` usage exists (per current audit), so the frontend does not yet depend on additional runtime configuration values.
+
+## 4. API client and backend touchpoints
+
+`src/lib/api.ts` contains the shared API helper logic:
+
+```ts
+export const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3333'
+
+export async function parseApiError(response: Response, fallback: string) {
+  try {
+    const body = await response.json()
+    if (body && typeof body === 'object' && 'message' in body) {
+      return (body as { message?: string }).message ?? fallback
+    }
+  } catch (_error) {
+    // Ignore parsing failures
+  }
+  return fallback
+}
+```
+
+- `API_BASE` is the central point for all fetch calls.
+- `parseApiError` provides a consistent error extraction helper.
+
+### Integration mapping (per file structure)
+
+While the full codebase was not expanded here, the expected integration points include:
+
+- `src/context/AuthContext.tsx`: Likely uses `API_BASE` when signing in/out or fetching the authenticated user, so changes to auth endpoints (routes, response shapes) will impact this file.
+- `src/context/CheckoutContext.tsx`: Depends on cart/checkout APIs; any modification of order creation or pricing endpoints must be reflected here.
+- `src/lib/api.ts`: Central helper for all API interactions, so backend contract changes (URLs, payloads, error shapes) go through this file.
+- Page components under `src/pages/*` and `src/pages/admin/*`: Each page that presents data from the backend will import from `src/lib/api` or context providers, so they are the files most affected when backend responses change (e.g., product fields, order structure, admin actions).
+- `src/components/Layout.tsx`: If the layout uses backend-driven navigation or user info, it also ties into these APIs.
+
+## 5. Runtime bootstrap
+
+`src/main.tsx` is the entry point that wires everything together:
+
+```tsx
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App'
+import './styles/global.css'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)
+```
+
+Any change to context providers or the app shell (App component, Layout, route configuration) should be reviewed in tandem with backend contract changes because this file is where global providers (AuthContext, CheckoutContext, etc.) are composed.
+
+## 6. Files to touch when backend contracts/configuration change
+
+1. `src/lib/api.ts` – update base URL defaults, helpers, or shared fetch logic.
+2. `src/context/*` – adjust API calls and state shape for auth/checkout context providers.
+3. `src/pages/*` and `src/pages/admin/*` – update fetch hooks or data consumers when API responses change (e.g., schema updates or new endpoints).
+4. `src/components/Layout.tsx` and other shared UI components – handle new data or props arising from configuration changes.
+5. `src/main.tsx`/`src/App.tsx` – ensure providers/contexts are configured appropriately when underlying services/configuration evolve.
+
+This inventory should be reviewed alongside new backend changes to assess the frontend impact before deploying cross-cutting updates.
