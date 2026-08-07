@@ -1,11 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
-
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3333'
+import type { ReactNode } from 'react'
+import { API_BASE, parseApiError } from '../lib/api'
 
 export interface UserProfile {
   id: number
   email: string
   emailVerified: boolean
+  roles?: string[]
 }
 
 interface AuthContextValue {
@@ -26,11 +27,61 @@ const jsonHeadersInit: HeadersInit = {
   'Content-Type': 'application/json',
 }
 
-function normalizeError(response: Response, fallback: string) {
-  return response.json().then((body) => body?.message ?? fallback).catch(() => fallback)
+const supportRoleIdentifiers = ['support', 'admin', 'super-admin']
+
+const safeParseJson = async <T>(response: Response): Promise<T | null> => {
+  try {
+    return (await response.json()) as T
+  } catch {
+    return null
+  }
 }
 
-export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+const extractUserProfile = (payload: any): UserProfile | null => {
+  if (!payload || typeof payload !== 'object') {
+    return null
+  }
+  const candidate =
+    payload.user ??
+    payload.profile ??
+    payload.data?.user ??
+    payload.data?.profile ??
+    payload
+  if (!candidate || typeof candidate !== 'object') {
+    return null
+  }
+  const rawId = candidate.id
+  const numericId =
+    typeof rawId === 'number'
+      ? rawId
+      : typeof rawId === 'string'
+        ? Number(rawId)
+        : NaN
+  if (Number.isNaN(numericId)) {
+    return null
+  }
+  const rawEmail = candidate.email
+  if (typeof rawEmail !== 'string') {
+    return null
+  }
+  const normalizedRoles = Array.isArray(candidate.roles)
+    ? candidate.roles.filter((role): role is string => typeof role === 'string')
+    : undefined
+
+  return {
+    id: numericId,
+    email: rawEmail,
+    emailVerified: candidate.emailVerified === true,
+    roles: normalizedRoles,
+  }
+}
+
+const hasSupportRole = (user: UserProfile | null) =>
+  user?.roles?.some(
+    (role) => typeof role === 'string' && supportRoleIdentifiers.includes(role.toLowerCase()),
+  ) ?? false
+
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<UserProfile | null>(null)
   const [isReady, setIsReady] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -48,9 +99,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setUser(null)
         return
       }
-      const data = await response.json()
-      setUser(data.user ?? null)
-    } catch (err) {
+      const data = await safeParseJson<Record<string, unknown>>(response)
+      const nextUser = extractUserProfile(data)
+      setUser(nextUser)
+    } catch (_err) {
       setUser(null)
     } finally {
       setLoading(false)
@@ -72,12 +124,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         body: JSON.stringify(payload),
       })
       if (!response.ok) {
-        const serverMessage = await normalizeError(response, 'Unable to register at the moment.')
+        const serverMessage = await parseApiError(response, 'Unable to register at the moment.')
         setError(serverMessage)
         throw new Error(serverMessage)
       }
-      const body = await response.json()
-      return body.message ?? 'Registration successful'
+      const body =
+        (await safeParseJson<{
+          message?: string
+          data?: { message?: string }
+        }>(response)) ?? null
+      return body?.message ?? body?.data?.message ?? 'Registration successful'
     } finally {
       setLoading(false)
     }
@@ -94,15 +150,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         body: JSON.stringify(payload),
       })
       if (!response.ok) {
-        const serverMessage = await normalizeError(response, 'Invalid credentials')
+        const serverMessage = await parseApiError(response, 'Invalid credentials')
         setError(serverMessage)
         throw new Error(serverMessage)
       }
-      const data = await response.json()
-      if (data.user) {
-        setUser(data.user)
+      const data = await safeParseJson<Record<string, unknown>>(response)
+      const nextUser = extractUserProfile(data)
+      if (!nextUser) {
+        const fallbackMessage = 'Unable to read your profile.'
+        setError(fallbackMessage)
+        throw new Error(fallbackMessage)
       }
-      return data.user
+      setUser(nextUser)
+      return nextUser
     } finally {
       setLoading(false)
     }
@@ -117,7 +177,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         credentials: 'include',
       })
       if (!response.ok) {
-        const serverMessage = await normalizeError(response, 'Unable to sign out right now.')
+        const serverMessage = await parseApiError(response, 'Unable to sign out right now.')
         setError(serverMessage)
         throw new Error(serverMessage)
       }
@@ -128,12 +188,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }
 
   const isSupportUser = useMemo(() => {
+    if (hasSupportRole(user)) {
+      return true
+    }
     if (!user?.email) {
       return false
     }
     const normalized = user.email.toLowerCase()
     return normalized.includes('+support') || normalized.includes('@support.')
-  }, [user?.email])
+  }, [user?.email, user?.roles])
 
   const value = useMemo(
     () => ({
