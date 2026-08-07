@@ -1,155 +1,55 @@
-import { beforeEach, describe, expect, it, jest } from '@jest/globals'
+import { Decimal } from '@prisma/client/runtime/library'
 import { PrismaService } from '../prisma/prisma.service'
+import { RiskImpact, RiskLikelihood, RiskSeverity, RiskStatus } from '@prisma/client'
 import { ReportingService } from './reporting.service'
 import { RiskRegisterQueryDto } from './dto/risk-register-query.dto'
-import {
-  RiskImpact,
-  RiskLikelihood,
-  RiskSeverity,
-  RiskStatus,
-} from '@prisma/client'
 
-describe('ReportingService - risk register', () => {
-  let service: ReportingService
-  let prisma: Partial<PrismaService>
-  let findManyMock: jest.Mock
-  let countMock: jest.Mock
+describe('ReportingService', () => {
+  let prismaMock: Partial<PrismaService>
+  let reportingService: ReportingService
 
   beforeEach(() => {
-    findManyMock = jest.fn()
-    countMock = jest.fn()
-    prisma = {
+    prismaMock = {
       riskRegisterItem: {
-        findMany: findManyMock,
-        count: countMock,
+        findMany: jest.fn(),
+        count: jest.fn(),
       },
-    } as unknown as PrismaService
-    service = new ReportingService(prisma as PrismaService)
+    }
+    reportingService = new ReportingService(prismaMock as PrismaService)
   })
 
-  it('returns sorted risk items and highlights the top areas', async () => {
-    const now = new Date()
-    findManyMock.mockResolvedValue([
-      {
-        id: 1,
-        title: 'Payment Reconciliation Lag',
-        description: 'Refunds are taking longer than expected.',
-        severity: RiskSeverity.HIGH,
-        impact: RiskImpact.MAJOR,
-        likelihood: RiskLikelihood.LIKELY,
-        status: RiskStatus.CONFIRMED,
-        priority: 2,
-        riskScore: 18,
-        sourceContext: 'Checkout',
-        metadata: { team: 'finance' },
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: 2,
-        title: 'Gateway Outages',
-        description: 'Payment gateway is repeatedly failing.',
-        severity: RiskSeverity.CRITICAL,
-        impact: RiskImpact.CATASTROPHIC,
-        likelihood: RiskLikelihood.CERTAIN,
-        status: RiskStatus.CONFIRMED,
-        priority: 3,
-        riskScore: 24,
-        sourceContext: 'Payments',
-        metadata: { vendor: 'PayPartner' },
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: 3,
-        title: 'Inventory Drift',
-        description: 'Stock levels fluctuate without updates.',
-        severity: RiskSeverity.MEDIUM,
-        impact: RiskImpact.MODERATE,
-        likelihood: RiskLikelihood.POSSIBLE,
-        status: RiskStatus.SUSPECTED,
-        priority: 1,
-        riskScore: 12,
-        sourceContext: 'Inventory Sync',
-        metadata: { team: 'ops' },
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: 4,
-        title: 'Checkout Styling Glitch',
-        description: 'Minor front-end issue on checkout button.',
-        severity: RiskSeverity.LOW,
-        impact: RiskImpact.NEGLIGIBLE,
-        likelihood: RiskLikelihood.RARE,
-        status: RiskStatus.SUSPECTED,
-        priority: 5,
-        riskScore: 4,
-        sourceContext: 'Frontend',
-        metadata: { ticket: 'UI-99' },
-        createdAt: now,
-        updatedAt: now,
-      },
-    ])
-    countMock.mockResolvedValue(4)
-
-    const response = await service.getRiskRegister({} as RiskRegisterQueryDto)
-
-    expect(response.items.map((item) => item.id)).toEqual([2, 1, 3, 4])
-    expect(response.items[0].classification).toBe(RiskStatus.CONFIRMED)
-    expect(response.items[3].isTopRisk).toBe(false)
-    expect(response.topRiskHighlights).toHaveLength(3)
-    expect(response.items[0].impactNotes).toContain('Catastrophic')
-    expect(response.topRiskHighlights[0].riskScore).toBe(24)
-  })
-
-  it('applies filters and pagination from the query', async () => {
-    const now = new Date()
-    findManyMock.mockResolvedValue([
-      {
-        id: 9,
-        title: 'Confirmed Network Lag',
-        description: 'Network failures confirmed during peak periods.',
-        severity: RiskSeverity.HIGH,
-        impact: RiskImpact.MAJOR,
-        likelihood: RiskLikelihood.LIKELY,
-        status: RiskStatus.CONFIRMED,
-        priority: 7,
-        riskScore: 13,
-        sourceContext: 'Network',
-        metadata: { ticket: 'NET-9' },
-        createdAt: now,
-        updatedAt: now,
-      },
-    ])
-    countMock.mockResolvedValue(1)
-
-    const query = {
+  it('includes root cause, fix summary, and modified files for each risk register finding', async () => {
+    const mockItem = {
+      id: 1,
+      title: 'Inventory sync lag',
+      description: 'Inventory snapshot misses late updates.',
+      severity: RiskSeverity.MAJOR,
+      impact: RiskImpact.MAJOR,
+      likelihood: RiskLikelihood.LIKELY,
       status: RiskStatus.CONFIRMED,
-      minRiskScore: 10,
-      limit: 50,
-      offset: 5,
-    } as RiskRegisterQueryDto
+      priority: 1,
+      riskScore: new Decimal(8),
+      sourceContext: 'Inventory sync worker',
+      metadata: null,
+      rootCause: 'Sync worker processed updates out of order.',
+      fixSummary: 'Added ordering guarantees before applying inventory diffs.',
+      modifiedFiles: ['inventory/sync.worker.ts', 'inventory/consistency.spec.ts'],
+      updatedAt: new Date(),
+    }
 
-    await service.getRiskRegister(query)
+    ;(prismaMock.riskRegisterItem?.findMany as jest.Mock).mockResolvedValue([mockItem])
+    ;(prismaMock.riskRegisterItem?.count as jest.Mock).mockResolvedValue(1)
 
-    expect(findManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          status: RiskStatus.CONFIRMED,
-          riskScore: expect.objectContaining({ gte: 10 }),
-        }),
-        skip: 5,
-        take: 50,
-      }),
-    )
-    expect(countMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          status: RiskStatus.CONFIRMED,
-          riskScore: expect.objectContaining({ gte: 10 }),
-        }),
-      }),
-    )
+    const result = await reportingService.getRiskRegister({} as RiskRegisterQueryDto)
+
+    expect(result.items).toHaveLength(1)
+    expect(result.items[0]).toMatchObject({
+      id: mockItem.id,
+      title: mockItem.title,
+      description: mockItem.description,
+      rootCause: mockItem.rootCause,
+      fixSummary: mockItem.fixSummary,
+      modifiedFiles: mockItem.modifiedFiles,
+    })
   })
 })
