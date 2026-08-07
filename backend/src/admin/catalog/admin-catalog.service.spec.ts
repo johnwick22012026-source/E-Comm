@@ -62,6 +62,26 @@ describe('AdminCatalogService', () => {
       ).rejects.toBeInstanceOf(BadRequestException)
     })
 
+    it('throws when available and reserved together exceed stock', async () => {
+      await expect(
+        service.updateInventory(1, inventoryDto({ stockQuantity: 5, availableQuantity: 3, reservedQuantity: 3 })),
+      ).rejects.toBeInstanceOf(BadRequestException)
+    })
+
+    it('allows available and reserved to exactly match stock', async () => {
+      await service.updateInventory(1, inventoryDto({ stockQuantity: 5, availableQuantity: 3, reservedQuantity: 2 }))
+
+      expect(prisma.product.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 1 },
+          data: expect.objectContaining({
+            availableQuantity: 3,
+            reservedQuantity: 2,
+          }),
+        }),
+      )
+    })
+
     it('forces availability to false when marking inactive even if not provided', async () => {
       await service.updateInventory(1, inventoryDto({ stockQuantity: 10, isActive: false }))
 
