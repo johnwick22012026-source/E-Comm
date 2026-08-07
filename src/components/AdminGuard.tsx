@@ -2,14 +2,21 @@ import React from 'react'
 import { Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
+const ADMIN_ROLE_IDENTIFIERS = new Set(['admin', 'support', 'super-admin'])
+
 export function AdminGuard() {
-  const { isSupportUser, isReady, loading } = useAuth()
+  const { user, isSupportUser, isReady, loading } = useAuth()
 
   if (!isReady || loading) {
     return null
   }
 
-  if (!isSupportUser) {
+  const hasAdminRole =
+    user?.roles?.some(
+      (role) => typeof role === 'string' && ADMIN_ROLE_IDENTIFIERS.has(role.toLowerCase()),
+    ) ?? false
+
+  if (!isSupportUser && !hasAdminRole) {
     return <Navigate to="/" replace />
   }
 
