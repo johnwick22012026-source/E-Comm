@@ -453,19 +453,23 @@ enum RiskStatus {
 }
 
 model RiskRegisterItem {
-  id            Int            @id @default(autoincrement())
-  title         String
-  description   String?
-  severity      RiskSeverity
-  impact        RiskImpact
-  likelihood    RiskLikelihood
-  status        RiskStatus
-  priority      Int            @default(0)
-  riskScore     Decimal        @default(0)
-  sourceContext String?
-  metadata      Json?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id                      Int            @id @default(autoincrement())
+  title                   String
+  description             String?
+  severity                RiskSeverity
+  impact                  RiskImpact
+  likelihood              RiskLikelihood
+  status                  RiskStatus
+  priority                Int            @default(0)
+  riskScore               Decimal        @default(0)
+  sourceContext           String?
+  metadata                Json?
+  verificationEvidence    Json?
+  validationOutcome       String?
+  finalStatus             String?
+  residualRiskNotes       String?
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
 
   @@index([status])
   @@index([priority])
